@@ -6,13 +6,25 @@ import (
 	"github.com/andrewtj/dnssd"
 	"log"
 	"net"
+	"time"
+)
+
+type ConnState int
+
+const (
+	StateNew ConnState = iota
+	StateActive
+	StateIdle
+	StateHijacked
+	StateClosed
 )
 
 //starts the ROAP service
 func startROAP(hardwareAddr net.HardwareAddr, hostName string) {
 
+	port := 5000
 	name := fmt.Sprintf("%s@%s", hex.EncodeToString(hardwareAddr), hostName)
-	op := dnssd.NewRegisterOp(name, "_raop._tcp", 5000, RegisterROAPCallbackFunc)
+	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, RegisterROAPCallbackFunc)
 
 	op.SetTXTPair("txtvers", "1")
 	op.SetTXTPair("ch", "2")
@@ -35,6 +47,7 @@ func startROAP(hardwareAddr net.HardwareAddr, hostName string) {
 		return
 	}
 	log.Println("started ROAP service")
+	go startROAPWebServer(port)
 	// later...
 	//op.Stop()
 }
@@ -52,3 +65,56 @@ func RegisterROAPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, s
 		log.Printf("ROAP Service “%s” removed from %s", name, domain)
 	}
 }
+
+func startROAPWebServer(port int) error {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Println("error starting ROAP server:", err)
+		return err
+	}
+	defer ln.Close()
+	var tempDelay time.Duration // how long to sleep on accept failure
+	for {
+		rw, e := ln.Accept()
+		if e != nil {
+			if ne, ok := e.(net.Error); ok && ne.Temporary() {
+				if tempDelay == 0 {
+					tempDelay = 5 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 1 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+				log.Printf("ROAP: Accept error: %v; retrying in %v", e, tempDelay)
+				time.Sleep(tempDelay)
+				continue
+			}
+			return e
+		}
+		tempDelay = 0
+		log.Println("got a connection from: ", rw.RemoteAddr())
+		//need to setup a connection object that handles the connection
+		//then figure out how to handle the RTSP protocol from the data returned.
+
+		// c, err := newConn(rw)
+		// if err != nil {
+		// 	continue
+		// }
+		// c.setState(c.rwc, StateNew) // before Serve can return
+		// go c.serve()
+	}
+}
+
+// func newConn(rwc net.Conn) (c *conn) {
+// 	c = new(conn)
+// 	c.remoteAddr = rwc.RemoteAddr().String()
+// 	c.server = srv
+// 	c.rwc = rwc
+// 	c.sr = liveSwitchReader{r: c.rwc}
+// 	c.lr = io.LimitReader(&c.sr, noLimit).(*io.LimitedReader)
+// 	br := newBufioReader(c.lr)
+// 	bw := newBufioWriterSize(c.rwc, 4<<10)
+// 	c.buf = bufio.NewReadWriter(br, bw)
+// 	return c
+// }
