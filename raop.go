@@ -20,7 +20,7 @@ const (
 )
 
 //starts the ROAP service
-func startROAP(hardwareAddr net.HardwareAddr, hostName string) {
+func startRAOP(hardwareAddr net.HardwareAddr, hostName string) {
 
 	port := 5000
 	name := fmt.Sprintf("%s@%s", hex.EncodeToString(hardwareAddr), hostName)
@@ -43,33 +43,33 @@ func startROAP(hardwareAddr net.HardwareAddr, hostName string) {
 	op.SetTXTPair("ek", "1")
 	err := op.Start()
 	if err != nil {
-		log.Printf("Failed to register ROAP service: %s", err)
+		log.Printf("Failed to register RAOP service: %s", err)
 		return
 	}
-	log.Println("started ROAP service")
-	go startROAPWebServer(port)
+	log.Println("started RAOP service")
+	go startRAOPWebServer(port)
 	// later...
 	//op.Stop()
 }
 
 //helper method for the ROAP service
-func RegisterROAPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
+func RegisterRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
 	if err != nil {
 		// op is now inactive
-		log.Printf("ROAP Service registration failed: %s", err)
+		log.Printf("RAOP Service registration failed: %s", err)
 		return
 	}
 	if add {
-		log.Printf("ROAP Service registered as “%s“ in %s", name, domain)
+		log.Printf("RAOP Service registered as “%s“ in %s", name, domain)
 	} else {
-		log.Printf("ROAP Service “%s” removed from %s", name, domain)
+		log.Printf("RAOP Service “%s” removed from %s", name, domain)
 	}
 }
 
-func startROAPWebServer(port int) error {
+func startRAOPWebServer(port int) error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Println("error starting ROAP server:", err)
+		log.Println("error starting RAOP server:", err)
 		return err
 	}
 	defer ln.Close()
@@ -86,7 +86,7 @@ func startROAPWebServer(port int) error {
 				if max := 1 * time.Second; tempDelay > max {
 					tempDelay = max
 				}
-				log.Printf("ROAP: Accept error: %v; retrying in %v", e, tempDelay)
+				log.Printf("RAOP: Accept error: %v; retrying in %v", e, tempDelay)
 				time.Sleep(tempDelay)
 				continue
 			}
