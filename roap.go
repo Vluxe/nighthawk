@@ -9,16 +9,6 @@ import (
 	"time"
 )
 
-type ConnState int
-
-const (
-	StateNew ConnState = iota
-	StateActive
-	StateIdle
-	StateHijacked
-	StateClosed
-)
-
 //starts the ROAP service
 func startROAP(hardwareAddr net.HardwareAddr, hostName string) {
 
@@ -93,28 +83,10 @@ func startROAPWebServer(port int) error {
 			return e
 		}
 		tempDelay = 0
-		log.Println("got a connection from: ", rw.RemoteAddr())
-		//need to setup a connection object that handles the connection
-		//then figure out how to handle the RTSP protocol from the data returned.
-
-		// c, err := newConn(rw)
-		// if err != nil {
-		// 	continue
-		// }
-		// c.setState(c.rwc, StateNew) // before Serve can return
-		// go c.serve()
+		//setup a connection object that handles the connection
+		//this handles the RTSP protocol from interaction from here.
+		c := newConn(rw)
+		//c.setState(c.rwc, StateNew) // before Serve can return
+		go c.serve()
 	}
 }
-
-// func newConn(rwc net.Conn) (c *conn) {
-// 	c = new(conn)
-// 	c.remoteAddr = rwc.RemoteAddr().String()
-// 	c.server = srv
-// 	c.rwc = rwc
-// 	c.sr = liveSwitchReader{r: c.rwc}
-// 	c.lr = io.LimitReader(&c.sr, noLimit).(*io.LimitedReader)
-// 	br := newBufioReader(c.lr)
-// 	bw := newBufioWriterSize(c.rwc, 4<<10)
-// 	c.buf = bufio.NewReadWriter(br, bw)
-// 	return c
-// }
