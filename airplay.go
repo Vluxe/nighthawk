@@ -10,33 +10,49 @@ import (
 
 //starts the airplay server
 func startAirplay(hardwareAddr net.HardwareAddr, name string) {
-	listener, err := net.Listen("tcp", ":7000")
-	if err != nil {
-		log.Printf("Listen failed: %s", err)
-		return
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
+	//listener, err := net.Listen("tcp", ":7000")
+	// if err != nil {
+	// 	log.Printf("Listen failed: %s", err)
+	// 	return
+	// }
+	port := 7000 //listener.Addr().(*net.TCPAddr).Port
 
 	op := dnssd.NewRegisterOp(name, "_airplay._tcp", port, RegisterCallbackFunc)
 
 	log.Println("hwID:", hardwareAddr.String())
 	op.SetTXTPair("deviceid", hardwareAddr.String())
-	op.SetTXTPair("features", fmt.Sprintf("0x%x", 0x7))
+	//mask := 0x0 0000 1100 0000 //screen mirroring only
+	mask := 0x00C0
+	str := fmt.Sprintf("0x%x", mask)
+	log.Println("support features: ", str)
+	op.SetTXTPair("features", str)
 	op.SetTXTPair("model", "AppleTV2,1")
-	err = op.Start()
+	err := op.Start()
 	if err != nil {
 		log.Printf("Failed to register airplay service: %s", err)
 		return
 	}
-	log.Println("started airplay service")
+	log.Println("started Airplay service")
 
-	go http.ListenAndServe(":7100", nil)
+	go http.ListenAndServe(":7100", nil) //for screen mirroring
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %s", r.RemoteAddr)
-		log.Println("got connection from: ", r.RemoteAddr)
+		log.Println("got airplay connection from: ", r.RemoteAddr)
 	})
-	http.Serve(listener, nil)
+
+	http.HandleFunc("/server-info", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, %s", r.RemoteAddr)
+		log.Println("server info yeah.")
+	})
+
+	http.HandleFunc("/play", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "Hello, %s", r.RemoteAddr)
+		log.Println("play!!!")
+	})
+	//log.Println("http port: ", fmt.Sprintf(":%d", port))
+	http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	//http.Serve(listener, nil)
 	// // later...
 	// op.Stop()
 }
@@ -45,12 +61,12 @@ func startAirplay(hardwareAddr net.HardwareAddr, name string) {
 func RegisterCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
 	if err != nil {
 		// op is now inactive
-		log.Printf("Service registration failed: %s", err)
+		log.Printf("Airplay Service registration failed: %s", err)
 		return
 	}
 	if add {
-		log.Printf("Service registered as “%s“ in %s", name, domain)
+		log.Printf("Airplay Service registered as “%s“ in %s", name, domain)
 	} else {
-		log.Printf("Service “%s” removed from %s", name, domain)
+		log.Printf("Airplay Service “%s” removed from %s", name, domain)
 	}
 }
