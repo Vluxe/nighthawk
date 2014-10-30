@@ -24,7 +24,7 @@ func startRAOP(hardwareAddr net.HardwareAddr, hostName string) {
 
 	port := 5000
 	name := fmt.Sprintf("%s@%s", hex.EncodeToString(hardwareAddr), hostName)
-	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, RegisterROAPCallbackFunc)
+	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, RegisterRAOPCallbackFunc)
 
 	op.SetTXTPair("txtvers", "1")
 	op.SetTXTPair("ch", "2")
