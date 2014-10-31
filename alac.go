@@ -14,6 +14,10 @@ import (
 	"log"
 )
 
+const (
+	riceThreshold = 8
+)
+
 type AlacFile struct {
 	sampleSize     int
 	numChannels    int
@@ -38,6 +42,20 @@ type AlacFile struct {
 	SetInfo82                 uint32 /* 0x000020e7 */ /* max sample size?? */
 	SetInfo86                 uint32 /* 0x00069fe4 */ /* bit rate (avarge)?? */
 	SetInfo8aRate             uint32 /* 0x0000ac44 */
+}
+
+// Init a AlacFile struct for us.
+func createAlacFile(sampleSize, numberOfChannels int) *AlacFile {
+	f := make(AlacFile)
+	f.sampleSize = sampleSize
+	f.numChannels = numberOfChannels
+	f.bytesPerSample = (sampleSize / 8) * numberOfChannels
+	return f
+}
+
+// decodes an input buffer into an output buffer? Not sure if we need outputSize.
+func (f *AlacFile) decodeFrame(inputBuffer, outputBuffer []byte, outputSize int) {
+
 }
 
 // Allocates buffers
