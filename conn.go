@@ -2,12 +2,12 @@ package main
 
 import (
 	"bufio"
-	//"bytes"
+	"fmt"
 	"io"
 	"log"
 	"net"
-	"net/textproto"
 	"sync"
+	"time"
 )
 
 type liveSwitchReader struct {
@@ -42,6 +42,51 @@ type conn struct {
 
 // noLimit is an effective infinite upper bound for io.LimitedReader
 const noLimit int64 = (1 << 63) - 1
+
+//starts the listener and sets up the processing closure
+func StartServer(port int, handler func(c *conn)) error {
+	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		log.Println("error starting server:", err)
+	}
+	defer ln.Close()
+	var tempDelay time.Duration // how long to sleep on accept failure
+	for {
+		rw, e := ln.Accept()
+		if e != nil {
+			if ne, ok := e.(net.Error); ok && ne.Temporary() {
+				if tempDelay == 0 {
+					tempDelay = 5 * time.Millisecond
+				} else {
+					tempDelay *= 2
+				}
+				if max := 1 * time.Second; tempDelay > max {
+					tempDelay = max
+				}
+				log.Printf("Accept error: %v; retrying in %v", e, tempDelay)
+				time.Sleep(tempDelay)
+				continue
+			}
+			return e
+		}
+		tempDelay = 0
+		//setup a connection object that handles the connection
+		//this handles the RTSP protocol from interaction from here.
+		c := newConn(rw)
+		//c.setState(c.rwc, StateNew) // before Serve can return
+		go handler(c)
+	}
+}
+
+//starts the connection processing. DELETE ME!!!
+func (c *conn) serve(handler func(c *conn)) {
+	readRequest(c.buf.Reader)
+	handler(c) //will change to something much more useful
+	//c.buf.Writer.Write([]byte("hi"))
+	//c.rwc.Close()
+}
+
+//private methods
 
 //creates a new connection struct from the accepted socket
 func newConn(rwc net.Conn) (c *conn) {
@@ -100,61 +145,4 @@ func newBufioReader(r io.Reader) *bufio.Reader {
 		return br
 	}
 	return bufio.NewReader(r)
-}
-
-//starts the connection processing
-func (c *conn) serve() {
-	log.Println("got a connection from: ", c.rwc.RemoteAddr())
-	ReadRequest(c.buf.Reader)
-	c.buf.Writer.Write([]byte("hi"))
-	c.rwc.Close()
-}
-
-var textprotoReaderPool sync.Pool
-
-//create a new reader from the pool
-func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
-	if v := textprotoReaderPool.Get(); v != nil {
-		tr := v.(*textproto.Reader)
-		tr.R = br
-		return tr
-	}
-	return textproto.NewReader(br)
-}
-
-//put our reader in the pool
-func putTextprotoReader(r *textproto.Reader) {
-	r.R = nil
-	textprotoReaderPool.Put(r)
-}
-
-//read the first line of the request
-func ReadRequest(b *bufio.Reader) (err error) {
-
-	tp := newTextprotoReader(b)
-
-	var s string
-	if s, err = tp.ReadLine(); err != nil {
-		return err
-	}
-	defer func() {
-		putTextprotoReader(tp)
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF
-		}
-	}()
-	log.Println("first: ", s)
-	headers, err := tp.ReadMIMEHeader()
-	if err != nil {
-		log.Println("unable to read mimeHeaders:", err)
-	}
-	log.Println("headers are: ", headers)
-	count := b.Buffered()
-	log.Println("buffer contains:", count)
-	buffer, _ := b.Peek(count)
-	log.Println("all the body len: ", len(buffer))
-	//buffer := new(bytes.Buffer)
-	//io.Copy(buffer, b)
-	//log.Println("all the body len: ", len(buffer.Bytes()))
-	return nil
 }

@@ -34,7 +34,7 @@ func startAirplay(hardwareAddr net.HardwareAddr, name string) {
 	}
 	log.Println("started Airplay service")
 
-	go http.ListenAndServe(":7100", nil) //for screen mirroring
+	go startMirroringWebServer(7100) //for screen mirroring
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %s", r.RemoteAddr)
@@ -69,4 +69,12 @@ func RegisterCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, servi
 	} else {
 		log.Printf("Airplay Service “%s” removed from %s", name, domain)
 	}
+}
+
+func startMirroringWebServer(port int) {
+	StartServer(port, func(c *conn) {
+		log.Println("got a Mirror connection from: ", c.rwc.RemoteAddr())
+		readRequest(c.buf.Reader)
+		c.buf.Write([]byte("OK"))
+	})
 }

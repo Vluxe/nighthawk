@@ -13,7 +13,7 @@ func main() {
 	serverName := "goAirplay" //the display name of your server
 	log.Println("server name:", serverName)
 
-	startRAOP(hardwareAddr, serverName)
+	go startRAOP(hardwareAddr, serverName)
 	startAirplay(hardwareAddr, serverName)
 }
 

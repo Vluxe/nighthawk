@@ -1,12 +1,23 @@
 package main
 
 import (
+	"bufio"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/andrewtj/dnssd"
+	"io"
 	"log"
 	"net"
-	"time"
+	"net/textproto"
+	"strings"
+	"sync"
+	//"bytes"
+)
+
+const (
+	protocolType = "RTSP/1.0"
+	carReturn    = "\r\n"
 )
 
 //starts the ROAP service
@@ -37,7 +48,7 @@ func startRAOP(hardwareAddr net.HardwareAddr, hostName string) {
 		return
 	}
 	log.Println("started RAOP service")
-	go startRAOPWebServer(port)
+	startRAOPServer(port)
 	// later...
 	//op.Stop()
 }
@@ -56,37 +67,113 @@ func RegisterRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, s
 	}
 }
 
-func startRAOPWebServer(port int) error {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		log.Println("error starting RAOP server:", err)
-		return err
-	}
-	defer ln.Close()
-	var tempDelay time.Duration // how long to sleep on accept failure
-	for {
-		rw, e := ln.Accept()
-		if e != nil {
-			if ne, ok := e.(net.Error); ok && ne.Temporary() {
-				if tempDelay == 0 {
-					tempDelay = 5 * time.Millisecond
-				} else {
-					tempDelay *= 2
-				}
-				if max := 1 * time.Second; tempDelay > max {
-					tempDelay = max
-				}
-				log.Printf("RAOP: Accept error: %v; retrying in %v", e, tempDelay)
-				time.Sleep(tempDelay)
-				continue
-			}
-			return e
+//starts the RTSP server
+func startRAOPServer(port int) {
+	StartServer(port, func(c *conn) {
+		log.Println("got a RAOP connection from: ", c.rwc.RemoteAddr())
+		verb, resource, headers, data, err := readRequest(c.buf.Reader)
+		if err != nil {
+			return
 		}
-		tempDelay = 0
-		//setup a connection object that handles the connection
-		//this handles the RTSP protocol from interaction from here.
-		c := newConn(rw)
-		//c.setState(c.rwc, StateNew) // before Serve can return
-		go c.serve()
+		var resHeaders map[string]string
+		key := "Cseq"
+		resHeaders[key] = headers[key][0]
+		resHeaders["Server"] = "AirTunes/130.14"
+		resData, status := processRequest(verb, resource, &resHeaders, data)
+		c.buf.Write(createResponse(status, resHeaders, resData))
+		c.rwc.Close()
+	})
+}
+
+//creates a response to send back to the client
+func createResponse(success bool, headers map[string]string, data []byte) []byte {
+	s := protocolType
+	if success {
+		s += " 200 OK" + carReturn
+		for key, val := range headers {
+			s += fmt.Sprintf("%s: %s%s", key, val, carReturn)
+		}
+	} else {
+		s += " 400 Bad Request" + carReturn
 	}
+	log.Println("response is (minus data):", s)
+	body := []byte(s + carReturn)
+	if data != nil {
+		body = append(body, data...)
+	}
+	return body
+}
+
+//processes the request by dispatching to the proper method for each response
+func processRequest(verb, resource string, headers *map[string]string, data []byte) ([]byte, bool) {
+	log.Println("resource is:", resource)
+	log.Println("verb is:", verb)
+	if verb == "POST" && resource == "/fp-setup" {
+		//do fairplay stuff
+	} else if verb == "OPTIONS" && resource == "*" {
+		//do the auth and such
+	}
+	//more stuff
+	return nil, false
+}
+
+//some request handling stuff
+var textprotoReaderPool sync.Pool
+
+//create a new reader from the pool
+func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
+	if v := textprotoReaderPool.Get(); v != nil {
+		tr := v.(*textproto.Reader)
+		tr.R = br
+		return tr
+	}
+	return textproto.NewReader(br)
+}
+
+//put our reader in the pool
+func putTextprotoReader(r *textproto.Reader) {
+	r.R = nil
+	textprotoReaderPool.Put(r)
+}
+
+//reads the request and breaks it up in proper chunks
+func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, buf []byte, err error) {
+
+	tp := newTextprotoReader(b)
+
+	var s string
+	if s, err = tp.ReadLine(); err != nil {
+		return "", "", nil, nil, err
+	}
+	defer func() {
+		putTextprotoReader(tp)
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+	}()
+	verb, resource, err := parseFirstLine(s)
+	if err != nil {
+		log.Println("unable to read RAOP request:", err)
+		return "", "", nil, nil, err
+	}
+	headers, err := tp.ReadMIMEHeader()
+	if err != nil {
+		log.Println("unable to read RAOP mimeHeaders:", err)
+		return "", "", nil, nil, err
+	}
+	count := b.Buffered()
+	buffer, _ := b.Peek(count)
+
+	return verb, resource, headers, buffer, nil
+}
+
+//parses and returns the verb and resource of the request
+func parseFirstLine(line string) (string, string, error) {
+	s1 := strings.Index(line, " ")
+	s2 := strings.Index(line[s1+1:], " ")
+	if s1 < 0 || s2 < 0 {
+		return "", "", errors.New("Invalid RTSP format")
+	}
+	s2 += s1 + 1
+	return line[:s1], line[s1+1 : s2], nil
 }
