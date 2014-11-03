@@ -93,12 +93,16 @@ func newConn(rwc net.Conn) (c *conn) {
 	c = new(conn)
 	c.remoteAddr = rwc.RemoteAddr().String()
 	c.rwc = rwc
+	c.resetConn()
+	return c
+}
+
+func (c *conn) resetConn() {
 	c.sr = liveSwitchReader{r: c.rwc}
 	c.lr = io.LimitReader(&c.sr, noLimit).(*io.LimitedReader)
 	br := newBufioReader(c.lr)
 	bw := newBufioWriterSize(c.rwc, 4<<10)
 	c.buf = bufio.NewReadWriter(br, bw)
-	return c
 }
 
 var (

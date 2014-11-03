@@ -12,12 +12,14 @@ import (
 	"net/textproto"
 	"strings"
 	"sync"
+	//"time"
 	//"bytes"
 )
 
 const (
 	protocolType = "RTSP/1.0"
 	carReturn    = "\r\n"
+	//rstAvoidanceDelay = 500 * time.Millisecond
 )
 
 //starts the ROAP service
@@ -71,22 +73,32 @@ func RegisterRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, s
 func startRAOPServer(port int) {
 	StartServer(port, func(c *conn) {
 		log.Println("got a RAOP connection from: ", c.rwc.RemoteAddr())
-		verb, resource, headers, data, err := readRequest(c.buf.Reader)
-		if err != nil {
-			return
+		for {
+			verb, resource, headers, data, err := readRequest(c.buf.Reader)
+			if err != nil {
+				return
+			}
+			resHeaders := make(map[string]string)
+			resHeaders["Server"] = "AirPlay/210.98"
+			key := "Cseq"
+			if headers[key] != nil {
+				resHeaders[key] = headers[key][0]
+			}
+			resData, status := processRequest(verb, resource, &resHeaders, data)
+			c.buf.Write(createResponse(status, resHeaders, resData))
+			c.buf.Flush()
+			c.resetConn()
+			//putBufioReader(c.buf.Reader)
+			//putBufioWriter(c.buf.Writer)
+			// if tcp, ok := c.rwc.(*net.TCPConn); ok {
+			// 	log.Println("close and write")
+			// 	tcp.CloseWrite()
+			// }
+			// time.Sleep(rstAvoidanceDelay)
+			//c.rwc.Close()
 		}
-		resHeaders := make(map[string]string)
-		resHeaders["Server"] = "AirTunes/130.14"
-		key := "Cseq"
-		if headers[key] != nil {
-			resHeaders[key] = headers[key][0]
-		}
-		resData, status := processRequest(verb, resource, &resHeaders, data)
-		c.buf.Write(createResponse(status, resHeaders, resData))
-		c.buf.Writer.Flush()
-		c.rwc.Close()
-		c.buf.Flush()
 	})
+	log.Println("ROAP server finished...?")
 }
 
 //creates a response to send back to the client
@@ -120,6 +132,9 @@ func processRequest(verb, resource string, headers *map[string]string, data []by
 		return handleFairPlay(headers, data), true
 	} else if verb == "OPTIONS" && resource == "*" {
 		//do the auth and such
+	} else if verb == "ANNOUNCE" {
+		//we need to collect keys and such here...
+		return nil, true
 	}
 	//more stuff
 	return nil, false
@@ -138,6 +153,13 @@ func handleFairPlay(headers *map[string]string, data []byte) []byte {
 			0xfc, 0xbc, 0x89, 0x31, 0xe6, 0x7e, 0xe8, 0xb9, 0xc5, 0xf2, 0xc7, 0x1d, 0x78, 0xf3, 0xef, 0x8d,
 			0x61, 0xf7, 0x3b, 0xcc, 0x17, 0xc3, 0x40, 0x23, 0x52, 0x4a, 0x8b, 0x9c, 0xb1, 0x75, 0x05, 0x66,
 			0xe6, 0xb3}
+	} else if data[6] == 3 {
+		//these bytes
+		collect := []byte{0x46, 0x50, 0x4c, 0x59, 0x02, 0x01, 0x04, 0x00, 0x00, 0x00, 0x00, 0x14}
+		//plus the last 20 bytes of the data
+		l := len(data)
+		last := data[l-20 : l]
+		return append(collect, last...)
 	} else {
 		log.Println("some other kind of FP setup:", data[6])
 	}
@@ -196,6 +218,7 @@ func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, bu
 
 //parses and returns the verb and resource of the request
 func parseFirstLine(line string) (string, string, error) {
+	log.Println("first Line:", line)
 	s1 := strings.Index(line, " ")
 	s2 := strings.Index(line[s1+1:], " ")
 	if s1 < 0 || s2 < 0 {
