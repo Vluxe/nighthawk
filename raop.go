@@ -218,7 +218,6 @@ func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, bu
 
 //parses and returns the verb and resource of the request
 func parseFirstLine(line string) (string, string, error) {
-	log.Println("first Line:", line)
 	s1 := strings.Index(line, " ")
 	s2 := strings.Index(line[s1+1:], " ")
 	if s1 < 0 || s2 < 0 {
