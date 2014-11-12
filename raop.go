@@ -18,7 +18,7 @@ const (
 	//rstAvoidanceDelay = 500 * time.Millisecond
 )
 
-//starts the ROAP service
+//starts the RAOP service
 func (s *AirServer) startRAOP(hardwareAddr string) {
 
 	port := 5000
@@ -51,7 +51,7 @@ func (s *AirServer) startRAOP(hardwareAddr string) {
 	//op.Stop()
 }
 
-//helper method for the ROAP service
+//helper method for the RAOP service
 func (s *AirServer) registerRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
 	if err != nil {
 		// op is now inactive
@@ -94,7 +94,7 @@ func (s *AirServer) startRAOPServer(port int) {
 			//c.rwc.Close()
 		}
 	})
-	log.Println("ROAP server finished...?")
+	log.Println("RAOP server finished...?")
 }
 
 //creates a response to send back to the client
