@@ -48,6 +48,7 @@ func StartServer(port int, handler func(c *conn)) error {
 	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		log.Println("error starting server:", err)
+		return err
 	}
 	defer ln.Close()
 	var tempDelay time.Duration // how long to sleep on accept failure
@@ -76,14 +77,6 @@ func StartServer(port int, handler func(c *conn)) error {
 		//c.setState(c.rwc, StateNew) // before Serve can return
 		go handler(c)
 	}
-}
-
-//starts the connection processing. DELETE ME!!!
-func (c *conn) serve(handler func(c *conn)) {
-	readRequest(c.buf.Reader)
-	handler(c) //will change to something much more useful
-	//c.buf.Writer.Write([]byte("hi"))
-	//c.rwc.Close()
 }
 
 //private methods

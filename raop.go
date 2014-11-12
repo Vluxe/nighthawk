@@ -2,18 +2,14 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"github.com/andrewtj/dnssd"
 	"io"
 	"log"
-	"net"
 	"net/textproto"
 	"strings"
 	"sync"
-	//"time"
-	//"bytes"
 )
 
 const (
@@ -23,15 +19,15 @@ const (
 )
 
 //starts the ROAP service
-func startRAOP(hardwareAddr net.HardwareAddr, hostName string) {
+func (s *AirServer) startRAOP(hardwareAddr string) {
 
 	port := 5000
-	name := fmt.Sprintf("%s@%s", hex.EncodeToString(hardwareAddr), hostName)
-	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, RegisterRAOPCallbackFunc)
+	name := fmt.Sprintf("%s@%s", hardwareAddr, s.ServerName)
+	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, s.registerRAOPCallbackFunc)
 
 	op.SetTXTPair("txtvers", "1")
 	op.SetTXTPair("ch", "2")
-	op.SetTXTPair("cn", "0,1")
+	op.SetTXTPair("cn", "0,1,2,3")
 	op.SetTXTPair("et", "0,1")
 	op.SetTXTPair("sv", "false")
 	op.SetTXTPair("da", "true")
@@ -50,13 +46,13 @@ func startRAOP(hardwareAddr net.HardwareAddr, hostName string) {
 		return
 	}
 	log.Println("started RAOP service")
-	startRAOPServer(port)
+	s.startRAOPServer(port)
 	// later...
 	//op.Stop()
 }
 
 //helper method for the ROAP service
-func RegisterRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
+func (s *AirServer) registerRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
 	if err != nil {
 		// op is now inactive
 		log.Printf("RAOP Service registration failed: %s", err)
@@ -70,11 +66,11 @@ func RegisterRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, s
 }
 
 //starts the RTSP server
-func startRAOPServer(port int) {
+func (s *AirServer) startRAOPServer(port int) {
 	StartServer(port, func(c *conn) {
 		log.Println("got a RAOP connection from: ", c.rwc.RemoteAddr())
 		for {
-			verb, resource, headers, data, err := readRequest(c.buf.Reader)
+			verb, resource, headers, data, err := s.readRequest(c.buf.Reader)
 			if err != nil {
 				return
 			}
@@ -84,8 +80,8 @@ func startRAOPServer(port int) {
 			if headers[key] != nil {
 				resHeaders[key] = headers[key][0]
 			}
-			resData, status := processRequest(verb, resource, &resHeaders, data)
-			c.buf.Write(createResponse(status, resHeaders, resData))
+			resData, status := s.processRequest(verb, resource, headers, resHeaders, data)
+			c.buf.Write(s.createResponse(status, resHeaders, resData))
 			c.buf.Flush()
 			c.resetConn()
 			//putBufioReader(c.buf.Reader)
@@ -102,7 +98,7 @@ func startRAOPServer(port int) {
 }
 
 //creates a response to send back to the client
-func createResponse(success bool, headers map[string]string, data []byte) []byte {
+func (server *AirServer) createResponse(success bool, headers map[string]string, data []byte) []byte {
 	s := protocolType
 	if success {
 		s += " 200 OK" + carReturn
@@ -125,23 +121,40 @@ func createResponse(success bool, headers map[string]string, data []byte) []byte
 }
 
 //processes the request by dispatching to the proper method for each response
-func processRequest(verb, resource string, headers *map[string]string, data []byte) ([]byte, bool) {
+func (s *AirServer) processRequest(verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
 	log.Println("resource is:", resource)
 	log.Println("verb is:", verb)
 	if verb == "POST" && resource == "/fp-setup" {
-		return handleFairPlay(headers, data), true
+		return s.handleFairPlay(resHeaders, data), true
 	} else if verb == "OPTIONS" && resource == "*" {
 		//do the auth and such
+		s.printRequest(verb, resource, headers, data)
 	} else if verb == "ANNOUNCE" {
 		//we need to collect keys and such here...
+		s.printRequest(verb, resource, headers, data)
+		return nil, true
+	} else if verb == "SETUP" {
+		//we need to setup UDP connections and such here
+		s.printRequest(verb, resource, headers, data)
 		return nil, true
 	}
 	//more stuff
 	return nil, false
 }
 
+//temp method for debug purposes
+func (s *AirServer) printRequest(verb, resource string, headers map[string][]string, data []byte) {
+	//log.Println("resource is:", resource)
+	//log.Println("verb is:", verb)
+	log.Println("headers:")
+	for key, val := range headers {
+		log.Printf("key: %s val: %s", key, val)
+	}
+	log.Println("body: ", string(data))
+}
+
 //process fair play requests
-func handleFairPlay(headers *map[string]string, data []byte) []byte {
+func (s *AirServer) handleFairPlay(headers map[string]string, data []byte) []byte {
 	if data[6] == 1 {
 		return []byte{0x46, 0x50, 0x4c, 0x59, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x82,
 			0x02, 0x02, 0x2f, 0x7b, 0x69, 0xe6, 0xb2, 0x7e, 0xbb, 0xf0, 0x68, 0x5f, 0x98, 0x54, 0x7f, 0x37,
@@ -170,7 +183,7 @@ func handleFairPlay(headers *map[string]string, data []byte) []byte {
 var textprotoReaderPool sync.Pool
 
 //create a new reader from the pool
-func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
+func (s *AirServer) newTextprotoReader(br *bufio.Reader) *textproto.Reader {
 	if v := textprotoReaderPool.Get(); v != nil {
 		tr := v.(*textproto.Reader)
 		tr.R = br
@@ -180,27 +193,27 @@ func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
 }
 
 //put our reader in the pool
-func putTextprotoReader(r *textproto.Reader) {
+func (s *AirServer) putTextprotoReader(r *textproto.Reader) {
 	r.R = nil
 	textprotoReaderPool.Put(r)
 }
 
 //reads the request and breaks it up in proper chunks
-func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, buf []byte, err error) {
+func (server *AirServer) readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, buf []byte, err error) {
 
-	tp := newTextprotoReader(b)
+	tp := server.newTextprotoReader(b)
 
 	var s string
 	if s, err = tp.ReadLine(); err != nil {
 		return "", "", nil, nil, err
 	}
 	defer func() {
-		putTextprotoReader(tp)
+		server.putTextprotoReader(tp)
 		if err == io.EOF {
 			err = io.ErrUnexpectedEOF
 		}
 	}()
-	verb, resource, err := parseFirstLine(s)
+	verb, resource, err := server.parseFirstLine(s)
 	if err != nil {
 		log.Println("unable to read RAOP request:", err)
 		return "", "", nil, nil, err
@@ -217,7 +230,7 @@ func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, bu
 }
 
 //parses and returns the verb and resource of the request
-func parseFirstLine(line string) (string, string, error) {
+func (s *AirServer) parseFirstLine(line string) (string, string, error) {
 	s1 := strings.Index(line, " ")
 	s2 := strings.Index(line[s1+1:], " ")
 	if s1 < 0 || s2 < 0 {

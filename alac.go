@@ -46,11 +46,11 @@ type AlacFile struct {
 
 // Init a AlacFile struct for us.
 func createAlacFile(sampleSize, numberOfChannels int) *AlacFile {
-	f := make(AlacFile)
+	f := AlacFile{}
 	f.sampleSize = sampleSize
 	f.numChannels = numberOfChannels
 	f.bytesPerSample = (sampleSize / 8) * numberOfChannels
-	return f
+	return &f
 }
 
 // decodes an input buffer into an output buffer? Not sure if we need outputSize.

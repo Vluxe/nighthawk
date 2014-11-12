@@ -4,12 +4,11 @@ import (
 	"fmt"
 	"github.com/andrewtj/dnssd"
 	"log"
-	"net"
 	"net/http"
 )
 
 //starts the airplay server
-func startAirplay(hardwareAddr net.HardwareAddr, name string) {
+func (s *AirServer) startAirplay(hardwareAddr string) {
 	//listener, err := net.Listen("tcp", ":7000")
 	// if err != nil {
 	// 	log.Printf("Listen failed: %s", err)
@@ -17,13 +16,14 @@ func startAirplay(hardwareAddr net.HardwareAddr, name string) {
 	// }
 	port := 7000 //listener.Addr().(*net.TCPAddr).Port
 
-	op := dnssd.NewRegisterOp(name, "_airplay._tcp", port, RegisterCallbackFunc)
+	op := dnssd.NewRegisterOp(s.ServerName, "_airplay._tcp", port, s.registerCallbackFunc)
 
-	log.Println("hwID:", hardwareAddr.String())
-	op.SetTXTPair("deviceid", hardwareAddr.String())
+	log.Println("hwID:", hardwareAddr)
+	op.SetTXTPair("deviceid", hardwareAddr)
 	//mask := 0x0 0000 1100 0000 //screen mirroring only
 	mask := 0x00C0
 	str := fmt.Sprintf("0x%x", mask)
+	//str := "0x39f7"
 	log.Println("support features: ", str)
 	op.SetTXTPair("features", str)
 	op.SetTXTPair("model", "AppleTV2,1")
@@ -34,7 +34,7 @@ func startAirplay(hardwareAddr net.HardwareAddr, name string) {
 	}
 	log.Println("started Airplay service")
 
-	go startMirroringWebServer(7100) //for screen mirroring
+	go s.startMirroringWebServer(7100) //for screen mirroring
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Hello, %s", r.RemoteAddr)
@@ -58,7 +58,7 @@ func startAirplay(hardwareAddr net.HardwareAddr, name string) {
 }
 
 //helper method for the airplay service
-func RegisterCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
+func (s *AirServer) registerCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
 	if err != nil {
 		// op is now inactive
 		log.Printf("Airplay Service registration failed: %s", err)
@@ -71,10 +71,10 @@ func RegisterCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, servi
 	}
 }
 
-func startMirroringWebServer(port int) {
+func (s *AirServer) startMirroringWebServer(port int) {
 	StartServer(port, func(c *conn) {
 		log.Println("got a Mirror connection from: ", c.rwc.RemoteAddr())
-		readRequest(c.buf.Reader)
+		//s.readRequest(c.buf.Reader)
 		c.buf.Write([]byte("OK"))
 	})
 }
