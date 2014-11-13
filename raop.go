@@ -75,7 +75,7 @@ func (s *AirServer) startRAOPServer(port int) {
 				return
 			}
 			resHeaders := make(map[string]string)
-			resHeaders["Server"] = "AirPlay/210.98"
+			resHeaders["Server"] = "AirTunes/150.33"
 			key := "Cseq"
 			if headers[key] != nil {
 				resHeaders[key] = headers[key][0]
@@ -130,7 +130,10 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 		//do the auth and such
 		s.printRequest(verb, resource, headers, data)
 	} else if verb == "ANNOUNCE" {
-		//we need to collect keys and such here...
+		c := Client{RTSPUrl: resource, Name: s.getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: s.getHeaderValue(headers, "X-Apple-Device-ID")}
+
+		//grab the cypto keys from the body
+		s.Clients[c.RTSPUrl] = &c
 		s.printRequest(verb, resource, headers, data)
 		return nil, true
 	} else if verb == "SETUP" {
@@ -140,6 +143,14 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 	}
 	//more stuff
 	return nil, false
+}
+
+//get a header value
+func (s *AirServer) getHeaderValue(headers map[string][]string, key string) string {
+	if headers[key] != nil {
+		return headers[key][0]
+	}
+	return ""
 }
 
 //temp method for debug purposes

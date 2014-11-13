@@ -8,7 +8,8 @@ import (
 )
 
 type AirServer struct {
-	ServerName string //the display name of your server that will be broadcast
+	ServerName string             //the display name of your server that will be broadcast
+	Clients    map[string]*Client //the connected clients. Key names are based on the RTSPUrls
 }
 
 //Start the airplay server. This will contain closures or an interface of stuff to deal with (like audio/video streams, volume controls, etc)
