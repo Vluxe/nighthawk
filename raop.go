@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/andrewtj/dnssd"
@@ -130,14 +131,11 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 		//do the auth and such
 		s.printRequest(verb, resource, headers, data)
 	} else if verb == "ANNOUNCE" {
-		c := Client{RTSPUrl: resource, Name: s.getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: s.getHeaderValue(headers, "X-Apple-Device-ID")}
-
-		//grab the cypto keys from the body
-		s.Clients[c.RTSPUrl] = &c
+		status := s.handleAnnounce(resource, headers, data)
 		s.printRequest(verb, resource, headers, data)
-		return nil, true
+		return nil, status
 	} else if verb == "SETUP" {
-		//we need to setup UDP connections and such here
+		//we need to setup UDP connections and Timing server here
 		s.printRequest(verb, resource, headers, data)
 		return nil, true
 	}
@@ -188,6 +186,38 @@ func (s *AirServer) handleFairPlay(headers map[string]string, data []byte) []byt
 		log.Println("some other kind of FP setup:", data[6])
 	}
 	return nil
+}
+
+//process announce requests
+func (s *AirServer) handleAnnounce(resource string, headers map[string][]string, data []byte) bool {
+	c := Client{RTSPUrl: resource, Name: s.getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: s.getHeaderValue(headers, "X-Apple-Device-ID")}
+	//grab the cypto keys from the body
+	bodyStr := string(data)
+	flags := strings.Split(bodyStr, "\r\n")
+	for _, str := range flags {
+
+		if strings.HasPrefix(str, "a=fmtp:") {
+
+		} else if strings.HasPrefix(str, "a=rsaaeskey:") {
+			key := str[12:]
+			data, err := base64.StdEncoding.DecodeString(key)
+			if err != nil {
+				log.Println("error decoding RSA key:", err)
+				return false
+			}
+			c.rasAesKey = data
+		} else if strings.HasPrefix(str, "a=aesiv:") {
+			key := str[8:]
+			data, err := base64.StdEncoding.DecodeString(key)
+			if err != nil {
+				log.Println("error decoding AES key:", err)
+				return false
+			}
+			c.rasAesKey = data
+		}
+	}
+	s.Clients[c.RTSPUrl] = &c
+	return true
 }
 
 //some request handling stuff

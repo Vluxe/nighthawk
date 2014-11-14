@@ -14,6 +14,7 @@ type AirServer struct {
 
 //Start the airplay server. This will contain closures or an interface of stuff to deal with (like audio/video streams, volume controls, etc)
 func (s *AirServer) Start() {
+	s.Clients = make(map[string]*Client)
 	hardwareAddr := s.getMacAddress()
 	fmt.Println("address:", hardwareAddr)
 	//start the Remote Audio Protocol, this is DNS and TCP servers
