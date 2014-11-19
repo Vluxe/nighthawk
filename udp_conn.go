@@ -10,9 +10,13 @@ type udpListener struct {
 	port int
 }
 
+var portNum = 4300
+
 //creates a udp listener struct
 func createUDPListener() udpListener {
-	return udpListener{port: 0} //we will switch out to port recycle thing
+	ln := udpListener{port: portNum} //we will switch out to port recycle thing
+	portNum++
+	return ln
 }
 
 //starts the listener and sets up the processing closure

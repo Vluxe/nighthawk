@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/textproto"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -135,7 +136,9 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 		s.printRequest(verb, resource, headers, data)
 		return nil, status
 	} else if verb == "SETUP" {
-		//we need to setup UDP connections and Timing server here
+		s.printRequest(verb, resource, headers, data)
+		return s.handleSetup(resource, headers, resHeaders)
+	} else if verb == "RECORD" {
 		s.printRequest(verb, resource, headers, data)
 		return nil, true
 	}
@@ -218,6 +221,38 @@ func (s *AirServer) handleAnnounce(resource string, headers map[string][]string,
 	}
 	s.Clients[c.RTSPUrl] = &c
 	return true
+}
+
+//process the setup requests
+func (s *AirServer) handleSetup(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.Clients[resource]
+	if c != nil {
+		transport := s.getHeaderValue(headers, "Transport")
+		log.Println("transport is:", transport)
+		settings := strings.Split(transport, ";")
+		for _, setting := range settings {
+			a := strings.Split(setting, "=")
+			if len(a) > 1 {
+				name := a[0]
+				if name == "timing_port" {
+					log.Println("timing_port is:", a[1])
+					port, err := strconv.Atoi(a[1])
+					if err != nil {
+						log.Println("error on Atoi: ", err)
+						return nil, false
+					}
+					log.Println("setting up client")
+					serverPort, controlPort, timePort := c.setup(port)
+					resHeaders["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;mode=record;server_port=%d;control_port=%d;timing_port=%d", serverPort, controlPort, timePort)
+					resHeaders["Session"] = "1"
+					resHeaders["Audio-Jack-Status"] = "connected"
+					return nil, true
+				}
+			}
+		}
+	}
+	log.Println("failed to do setup")
+	return nil, false
 }
 
 //some request handling stuff
