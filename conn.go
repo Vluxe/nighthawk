@@ -1,13 +1,28 @@
-package main
+package nighthawk
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/textproto"
+	"strings"
 	"sync"
 	"time"
+)
+
+var textprotoReaderPool sync.Pool
+
+type ConnState int
+
+const (
+	StateNew ConnState = iota
+	StateActive
+	StateIdle
+	StateHijacked
+	StateClosed
 )
 
 type liveSwitchReader struct {
@@ -21,16 +36,6 @@ func (sr *liveSwitchReader) Read(p []byte) (n int, err error) {
 	sr.Unlock()
 	return r.Read(p)
 }
-
-type ConnState int
-
-const (
-	StateNew ConnState = iota
-	StateActive
-	StateIdle
-	StateHijacked
-	StateClosed
-)
 
 type conn struct {
 	remoteAddr string            // network address of remote side
@@ -142,4 +147,70 @@ func newBufioReader(r io.Reader) *bufio.Reader {
 		return br
 	}
 	return bufio.NewReader(r)
+}
+
+//create a new reader from the pool
+func newTextprotoReader(br *bufio.Reader) *textproto.Reader {
+	if v := textprotoReaderPool.Get(); v != nil {
+		tr := v.(*textproto.Reader)
+		tr.R = br
+		return tr
+	}
+	return textproto.NewReader(br)
+}
+
+//put our reader in the pool
+func putTextprotoReader(r *textproto.Reader) {
+	r.R = nil
+	textprotoReaderPool.Put(r)
+}
+
+//reads the request and breaks it up in proper chunks
+func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, buf []byte, err error) {
+
+	tp := newTextprotoReader(b)
+
+	var s string
+	if s, err = tp.ReadLine(); err != nil {
+		return "", "", nil, nil, err
+	}
+	defer func() {
+		putTextprotoReader(tp)
+		if err == io.EOF {
+			err = io.ErrUnexpectedEOF
+		}
+	}()
+	verb, resource, err := parseFirstLine(s)
+	if err != nil {
+		log.Println("unable to read RAOP request:", err)
+		return "", "", nil, nil, err
+	}
+	headers, err := tp.ReadMIMEHeader()
+	if err != nil {
+		log.Println("unable to read RAOP mimeHeaders:", err)
+		return "", "", nil, nil, err
+	}
+	count := b.Buffered()
+	buffer, _ := b.Peek(count)
+
+	return verb, resource, headers, buffer, nil
+}
+
+//parses and returns the verb and resource of the request
+func parseFirstLine(line string) (string, string, error) {
+	s1 := strings.Index(line, " ")
+	s2 := strings.Index(line[s1+1:], " ")
+	if s1 < 0 || s2 < 0 {
+		return "", "", errors.New("Invalid RTSP format")
+	}
+	s2 += s1 + 1
+	return line[:s1], line[s1+1 : s2], nil
+}
+
+//get a header value
+func getHeaderValue(headers map[string][]string, key string) string {
+	if headers[key] != nil {
+		return headers[key][0]
+	}
+	return ""
 }

@@ -1,78 +1,26 @@
-package main
+package nighthawk
 
 import (
-	"bufio"
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"github.com/andrewtj/dnssd"
-	"io"
 	"log"
-	"net/textproto"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 const (
 	protocolType = "RTSP/1.0"
 	carReturn    = "\r\n"
+	raopPort     = 5000
 	//rstAvoidanceDelay = 500 * time.Millisecond
 )
 
-//starts the RAOP service
-func (s *AirServer) startRAOP(hardwareAddr string) {
-
-	port := 5000
-	name := fmt.Sprintf("%s@%s", hardwareAddr, s.ServerName)
-	op := dnssd.NewRegisterOp(name, "_raop._tcp", port, s.registerRAOPCallbackFunc)
-
-	op.SetTXTPair("txtvers", "1")
-	op.SetTXTPair("ch", "2")
-	op.SetTXTPair("cn", "0,1,2,3")
-	op.SetTXTPair("et", "0,1")
-	op.SetTXTPair("sv", "false")
-	op.SetTXTPair("da", "true")
-	op.SetTXTPair("sr", "44100")
-	op.SetTXTPair("ss", "16")
-	op.SetTXTPair("pw", "false")
-	op.SetTXTPair("vn", "3")
-	op.SetTXTPair("tp", "TCP,UDP")
-	op.SetTXTPair("md", "0,1,2")
-	op.SetTXTPair("vs", "130.14")
-	op.SetTXTPair("sm", "false")
-	op.SetTXTPair("ek", "1")
-	err := op.Start()
-	if err != nil {
-		log.Printf("Failed to register RAOP service: %s", err)
-		return
-	}
-	log.Println("started RAOP service")
-	s.startRAOPServer(port)
-	// later...
-	//op.Stop()
-}
-
-//helper method for the RAOP service
-func (s *AirServer) registerRAOPCallbackFunc(op *dnssd.RegisterOp, err error, add bool, name, serviceType, domain string) {
-	if err != nil {
-		// op is now inactive
-		log.Printf("RAOP Service registration failed: %s", err)
-		return
-	}
-	if add {
-		log.Printf("RAOP Service registered as “%s“ in %s", name, domain)
-	} else {
-		log.Printf("RAOP Service “%s” removed from %s", name, domain)
-	}
-}
-
-//starts the RTSP server
-func (s *AirServer) startRAOPServer(port int) {
-	StartServer(port, func(c *conn) {
+// startRAOPServer starts the RTSP/RAOP server.
+func (s *airServer) startRAOPServer() {
+	StartServer(raopPort, func(c *conn) {
 		log.Println("got a RAOP connection from: ", c.rwc.RemoteAddr())
 		for {
-			verb, resource, headers, data, err := s.readRequest(c.buf.Reader)
+			verb, resource, headers, data, err := readRequest(c.buf.Reader)
 			if err != nil {
 				return
 			}
@@ -95,7 +43,7 @@ func (s *AirServer) startRAOPServer(port int) {
 }
 
 //creates a response to send back to the client
-func (server *AirServer) createResponse(success bool, headers map[string]string, data []byte) []byte {
+func (server *airServer) createResponse(success bool, headers map[string]string, data []byte) []byte {
 	s := protocolType
 	if success {
 		s += " 200 OK" + carReturn
@@ -118,7 +66,7 @@ func (server *AirServer) createResponse(success bool, headers map[string]string,
 }
 
 //processes the request by dispatching to the proper method for each response
-func (s *AirServer) processRequest(verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
+func (s *airServer) processRequest(verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
 	log.Println("resource is:", resource)
 	log.Println("verb is:", verb)
 	if verb == "POST" && resource == "/fp-setup" {
@@ -147,16 +95,8 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 	return nil, false
 }
 
-//get a header value
-func (s *AirServer) getHeaderValue(headers map[string][]string, key string) string {
-	if headers[key] != nil {
-		return headers[key][0]
-	}
-	return ""
-}
-
 //temp method for debug purposes
-func (s *AirServer) printRequest(verb, resource string, headers map[string][]string, data []byte) {
+func (s *airServer) printRequest(verb, resource string, headers map[string][]string, data []byte) {
 	//log.Println("resource is:", resource)
 	//log.Println("verb is:", verb)
 	log.Println("headers:")
@@ -167,7 +107,7 @@ func (s *AirServer) printRequest(verb, resource string, headers map[string][]str
 }
 
 //process fair play requests
-func (s *AirServer) handleFairPlay(headers map[string]string, data []byte) []byte {
+func (s *airServer) handleFairPlay(headers map[string]string, data []byte) []byte {
 	if data[6] == 1 {
 		return []byte{0x46, 0x50, 0x4c, 0x59, 0x02, 0x01, 0x02, 0x00, 0x00, 0x00, 0x00, 0x82,
 			0x02, 0x02, 0x2f, 0x7b, 0x69, 0xe6, 0xb2, 0x7e, 0xbb, 0xf0, 0x68, 0x5f, 0x98, 0x54, 0x7f, 0x37,
@@ -193,8 +133,8 @@ func (s *AirServer) handleFairPlay(headers map[string]string, data []byte) []byt
 }
 
 //process the options requests
-func (s *AirServer) handleOptions(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	challenge := s.getHeaderValue(headers, "Apple-Challenge")
+func (s *airServer) handleOptions(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	challenge := getHeaderValue(headers, "Apple-Challenge")
 	if challenge != "" {
 		//data, err := base64.StdEncoding.DecodeString(challenge)
 		//if err == nil {
@@ -207,8 +147,8 @@ func (s *AirServer) handleOptions(resource string, headers map[string][]string, 
 }
 
 //process announce requests
-func (s *AirServer) handleAnnounce(resource string, headers map[string][]string, data []byte) bool {
-	c := Client{RTSPUrl: resource, Name: s.getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: s.getHeaderValue(headers, "X-Apple-Device-ID")}
+func (s *airServer) handleAnnounce(resource string, headers map[string][]string, data []byte) bool {
+	c := Client{RTSPUrl: resource, Name: getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: getHeaderValue(headers, "X-Apple-Device-ID")}
 	//grab the cypto keys from the body
 	bodyStr := string(data)
 	flags := strings.Split(bodyStr, "\r\n")
@@ -234,15 +174,15 @@ func (s *AirServer) handleAnnounce(resource string, headers map[string][]string,
 			c.rasAesKey = data
 		}
 	}
-	s.Clients[c.RTSPUrl] = &c
+	s.clients[c.RTSPUrl] = &c
 	return true
 }
 
 //process the setup requests
-func (s *AirServer) handleSetup(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.Clients[resource]
+func (s *airServer) handleSetup(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.clients[resource]
 	if c != nil {
-		transport := s.getHeaderValue(headers, "Transport")
+		transport := getHeaderValue(headers, "Transport")
 		log.Println("transport is:", transport)
 		settings := strings.Split(transport, ";")
 		for _, setting := range settings {
@@ -271,8 +211,8 @@ func (s *AirServer) handleSetup(resource string, headers map[string][]string, re
 }
 
 //process the RECORD requests
-func (s *AirServer) handleRecord(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.Clients[resource]
+func (s *airServer) handleRecord(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.clients[resource]
 	if c != nil {
 		c.start()
 		// notify the interface
@@ -281,8 +221,8 @@ func (s *AirServer) handleRecord(resource string, headers map[string][]string, r
 }
 
 //process the set_parameters requests
-func (s *AirServer) handleSetParameters(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.Clients[resource]
+func (s *airServer) handleSetParameters(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.clients[resource]
 	if c != nil {
 		//notify the interface of stuff
 	}
@@ -290,8 +230,8 @@ func (s *AirServer) handleSetParameters(resource string, headers map[string][]st
 }
 
 //process the FLUSH requests
-func (s *AirServer) handleFlush(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.Clients[resource]
+func (s *airServer) handleFlush(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.clients[resource]
 	if c != nil {
 		c.stop()
 		// notify the interface
@@ -300,73 +240,12 @@ func (s *AirServer) handleFlush(resource string, headers map[string][]string, re
 }
 
 //process the TEARDOWN requests
-func (s *AirServer) handleTeardown(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.Clients[resource]
+func (s *airServer) handleTeardown(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.clients[resource]
 	if c != nil {
-		delete(s.Clients, resource)
+		delete(s.clients, resource)
 		c.teardown()
 		//notify the interface
 	}
 	return nil, true
-}
-
-//some request handling stuff
-var textprotoReaderPool sync.Pool
-
-//create a new reader from the pool
-func (s *AirServer) newTextprotoReader(br *bufio.Reader) *textproto.Reader {
-	if v := textprotoReaderPool.Get(); v != nil {
-		tr := v.(*textproto.Reader)
-		tr.R = br
-		return tr
-	}
-	return textproto.NewReader(br)
-}
-
-//put our reader in the pool
-func (s *AirServer) putTextprotoReader(r *textproto.Reader) {
-	r.R = nil
-	textprotoReaderPool.Put(r)
-}
-
-//reads the request and breaks it up in proper chunks
-func (server *AirServer) readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, buf []byte, err error) {
-
-	tp := server.newTextprotoReader(b)
-
-	var s string
-	if s, err = tp.ReadLine(); err != nil {
-		return "", "", nil, nil, err
-	}
-	defer func() {
-		server.putTextprotoReader(tp)
-		if err == io.EOF {
-			err = io.ErrUnexpectedEOF
-		}
-	}()
-	verb, resource, err := server.parseFirstLine(s)
-	if err != nil {
-		log.Println("unable to read RAOP request:", err)
-		return "", "", nil, nil, err
-	}
-	headers, err := tp.ReadMIMEHeader()
-	if err != nil {
-		log.Println("unable to read RAOP mimeHeaders:", err)
-		return "", "", nil, nil, err
-	}
-	count := b.Buffered()
-	buffer, _ := b.Peek(count)
-
-	return verb, resource, headers, buffer, nil
-}
-
-//parses and returns the verb and resource of the request
-func (s *AirServer) parseFirstLine(line string) (string, string, error) {
-	s1 := strings.Index(line, " ")
-	s2 := strings.Index(line[s1+1:], " ")
-	if s1 < 0 || s2 < 0 {
-		return "", "", errors.New("Invalid RTSP format")
-	}
-	s2 += s1 + 1
-	return line[:s1], line[s1+1 : s2], nil
 }
