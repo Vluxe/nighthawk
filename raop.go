@@ -86,14 +86,9 @@ func (s *AirServer) startRAOPServer(port int) {
 			c.buf.Write(s.createResponse(status, resHeaders, resData))
 			c.buf.Flush()
 			c.resetConn()
-			//putBufioReader(c.buf.Reader)
-			//putBufioWriter(c.buf.Writer)
-			// if tcp, ok := c.rwc.(*net.TCPConn); ok {
-			// 	log.Println("close and write")
-			// 	tcp.CloseWrite()
-			// }
-			// time.Sleep(rstAvoidanceDelay)
-			//c.rwc.Close()
+			if !status || verb == "TEARDOWN" {
+				c.rwc.Close()
+			}
 		}
 	})
 	log.Println("RAOP server finished...?")
@@ -128,21 +123,27 @@ func (s *AirServer) processRequest(verb, resource string, headers map[string][]s
 	log.Println("verb is:", verb)
 	if verb == "POST" && resource == "/fp-setup" {
 		return s.handleFairPlay(resHeaders, data), true
-	} else if verb == "OPTIONS" && resource == "*" {
-		//do the auth and such
-		s.printRequest(verb, resource, headers, data)
+	} else if verb == "POST" && resource == "/auth-setup" {
+		return nil, true
+	} else if verb == "OPTIONS" {
+		return s.handleOptions(resource, headers, resHeaders)
 	} else if verb == "ANNOUNCE" {
 		status := s.handleAnnounce(resource, headers, data)
-		s.printRequest(verb, resource, headers, data)
 		return nil, status
 	} else if verb == "SETUP" {
-		s.printRequest(verb, resource, headers, data)
 		return s.handleSetup(resource, headers, resHeaders)
 	} else if verb == "RECORD" {
-		s.printRequest(verb, resource, headers, data)
-		return nil, true
+		return s.handleRecord(resource, headers, resHeaders)
+	} else if verb == "SET_PARAMETER" {
+		return s.handleSetParameters(resource, headers, resHeaders)
+	} else if verb == "FLUSH" {
+		return s.handleFlush(resource, headers, resHeaders)
+	} else if verb == "TEARDOWN" {
+		return s.handleTeardown(resource, headers, resHeaders)
+	} else if verb == "GET_PARAMETER" {
+		return nil, true //this verb doesn't do anything or even get called, but just to be safe
 	}
-	//more stuff
+	log.Println("RTSP: not sure how to handle this...")
 	return nil, false
 }
 
@@ -189,6 +190,20 @@ func (s *AirServer) handleFairPlay(headers map[string]string, data []byte) []byt
 		log.Println("some other kind of FP setup:", data[6])
 	}
 	return nil
+}
+
+//process the options requests
+func (s *AirServer) handleOptions(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	challenge := s.getHeaderValue(headers, "Apple-Challenge")
+	if challenge != "" {
+		//data, err := base64.StdEncoding.DecodeString(challenge)
+		//if err == nil {
+		//create the challenge response here
+		//resHeaders["Apple-Response"] = data
+		//}
+	}
+	resHeaders["Public"] = "ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET"
+	return nil, true
 }
 
 //process announce requests
@@ -253,6 +268,46 @@ func (s *AirServer) handleSetup(resource string, headers map[string][]string, re
 	}
 	log.Println("failed to do setup")
 	return nil, false
+}
+
+//process the RECORD requests
+func (s *AirServer) handleRecord(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.Clients[resource]
+	if c != nil {
+		c.start()
+		// notify the interface
+	}
+	return nil, true
+}
+
+//process the set_parameters requests
+func (s *AirServer) handleSetParameters(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.Clients[resource]
+	if c != nil {
+		//notify the interface of stuff
+	}
+	return nil, true
+}
+
+//process the FLUSH requests
+func (s *AirServer) handleFlush(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.Clients[resource]
+	if c != nil {
+		c.stop()
+		// notify the interface
+	}
+	return nil, true
+}
+
+//process the TEARDOWN requests
+func (s *AirServer) handleTeardown(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	c := s.Clients[resource]
+	if c != nil {
+		delete(s.Clients, resource)
+		c.teardown()
+		//notify the interface
+	}
+	return nil, true
 }
 
 //some request handling stuff

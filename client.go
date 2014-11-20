@@ -27,6 +27,16 @@ func (c *Client) setup(timePort int) (int, int, int) {
 }
 
 //start the audio stream
-func (c *Client) record() {
+func (c *Client) start() {
+	//start the client's time server
+}
+
+//start the audio stream
+func (c *Client) stop() {
+
+}
+
+//stop the udp listeners and cleanup things
+func (c *Client) teardown() {
 
 }
