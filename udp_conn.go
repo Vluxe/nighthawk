@@ -7,7 +7,8 @@ import (
 )
 
 type udpListener struct {
-	port int
+	port  int
+	netLn *net.UDPConn
 }
 
 var portNum = 4300
@@ -20,13 +21,14 @@ func createUDPListener() udpListener {
 }
 
 //starts the listener and sets up the processing closure
-func (c *udpListener) Start(handler func(b []byte, size int)) error {
+func (c *udpListener) start(handler func(b []byte, size int)) error {
 	sAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%d", c.port))
 	if err != nil {
 		log.Println("error binding UDP listener:", err)
 		return err
 	}
 	ln, err := net.ListenUDP("udp", sAddr)
+	c.netLn = ln
 	if err != nil {
 		log.Println("error starting UDP listener:", err)
 		return err

@@ -19,16 +19,18 @@ type Client struct {
 
 //setup the UDP ports. port is the timing port for the timeServer
 //returns the 3 udp ports created. server port, then control port, then the time server port
-func (c *Client) setup(timePort int) (int, int, int) {
+func (c *Client) setup(timePort int, serverHandler func(b []byte, size int), controlHandler func(b []byte, size int)) (int, int, int) {
 	c.serverLn = createUDPListener()
+	go c.serverLn.start(serverHandler)
 	c.controlLn = createUDPListener()
+	go c.controlLn.start(controlHandler)
 	c.timeSvr = createTimeServer(timePort)
 	return c.serverLn.port, c.controlLn.port, c.timeSvr.listener.port
 }
 
-//start the audio stream
+//start the audio stream by starting client's time server
 func (c *Client) start() {
-	//start the client's time server
+	c.timeSvr.start()
 }
 
 //start the audio stream
