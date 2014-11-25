@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	protocolType = "RTSP/1.0"
-	carReturn    = "\r\n"
-	raopPort     = 5000
+	RTSPProtocolType = "RTSP/1.0"
+	raopPort         = 5000
 	//rstAvoidanceDelay = 500 * time.Millisecond
 )
 
@@ -31,8 +30,8 @@ func (s *airServer) startRAOPServer() {
 			if headers[key] != nil {
 				resHeaders[key] = headers[key][0]
 			}
-			resData, status := s.processRequest(c, verb, resource, headers, resHeaders, data)
-			c.buf.Write(s.createResponse(status, resHeaders, resData))
+			resData, status := s.processRTSPRequest(c, verb, resource, headers, resHeaders, data)
+			c.buf.Write(s.createRTSPResponse(status, resHeaders, resData))
 			c.buf.Flush()
 			c.resetConn()
 			if !status || verb == "TEARDOWN" {
@@ -44,8 +43,8 @@ func (s *airServer) startRAOPServer() {
 }
 
 //creates a response to send back to the client
-func (server *airServer) createResponse(success bool, headers map[string]string, data []byte) []byte {
-	s := protocolType
+func (server *airServer) createRTSPResponse(success bool, headers map[string]string, data []byte) []byte {
+	s := RTSPProtocolType
 	if success {
 		s += " 200 OK" + carReturn
 		if data != nil {
@@ -67,7 +66,7 @@ func (server *airServer) createResponse(success bool, headers map[string]string,
 }
 
 //processes the request by dispatching to the proper method for each response
-func (s *airServer) processRequest(c *conn, verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
+func (s *airServer) processRTSPRequest(c *conn, verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
 	log.Println("resource is:", resource)
 	log.Println("verb is:", verb)
 	if verb == "POST" && resource == "/fp-setup" {
@@ -137,6 +136,7 @@ func (s *airServer) handleFairPlay(headers map[string]string, data []byte) []byt
 func (s *airServer) handleOptions(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
 	challenge := getHeaderValue(headers, "Apple-Challenge")
 	if challenge != "" {
+		log.Println("got an Apple-Challenge, need to implement the response")
 		//data, err := base64.StdEncoding.DecodeString(challenge)
 		//if err == nil {
 		//create the challenge response here
@@ -185,20 +185,17 @@ func (s *airServer) handleSetup(resource string, headers map[string][]string, re
 	c := s.clients[resource]
 	if c != nil {
 		transport := getHeaderValue(headers, "Transport")
-		log.Println("transport is:", transport)
 		settings := strings.Split(transport, ";")
 		for _, setting := range settings {
 			a := strings.Split(setting, "=")
 			if len(a) > 1 {
 				name := a[0]
 				if name == "timing_port" {
-					log.Println("timing_port is:", a[1])
 					port, err := strconv.Atoi(a[1])
 					if err != nil {
 						log.Println("error on Atoi: ", err)
 						return nil, false
 					}
-					log.Println("setting up client")
 
 					serverPort, controlPort, timePort := c.setup(port, func(b []byte, size int) {
 						//pass to interface

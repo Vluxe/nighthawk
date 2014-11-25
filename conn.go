@@ -13,6 +13,10 @@ import (
 	"time"
 )
 
+const (
+	carReturn = "\r\n"
+)
+
 var textprotoReaderPool sync.Pool
 
 type ConnState int

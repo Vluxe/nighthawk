@@ -10,7 +10,7 @@ type updHandler func(b []byte, size int, addr *net.Addr)
 
 type udpListener struct {
 	port  int
-	netLn *net.UDPConn
+	netLn net.UDPConn
 }
 
 var portNum = 4300
@@ -30,15 +30,15 @@ func (c *udpListener) start(handler updHandler) error {
 		return err
 	}
 	ln, err := net.ListenUDP("udp", sAddr)
-	c.netLn = ln
+	c.netLn = *ln
 	if err != nil {
 		log.Println("error starting UDP listener:", err)
 		return err
 	}
-	defer ln.Close()
+	defer c.netLn.Close()
 	for {
 		buf := make([]byte, 1024)
-		n, addr, err := ln.ReadFrom(buf)
+		n, addr, err := c.netLn.ReadFrom(buf)
 		if err != nil {
 			log.Println("error reading from UDP listener:", err)
 		}

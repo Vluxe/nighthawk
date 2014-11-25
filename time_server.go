@@ -40,24 +40,19 @@ func createTimeServer(clientPort int, clientIP string) timeServer {
 	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
 		//process NTP packets
 		log.Println("NTP packet!")
-		t.listener.netLn.WriteTo(t.sendQuery(), *addr)
+		//t.listener.netLn.WriteTo(t.sendQuery(), *addr)
 	})
 	return t
 }
 
 //starts the time server by sending the first timing packet
 func (t *timeServer) start() {
-	serverAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	cAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
 	if err != nil {
 		log.Println("unable to start time server:", err)
 		return
 	}
-	conn, err := net.DialUDP("udp", nil, serverAddr)
-	if err != nil {
-		log.Println("unable to start time server:", err)
-		return
-	}
-	conn.Write(t.sendQuery())
+	t.listener.netLn.WriteTo(t.sendQuery(), cAddr)
 }
 
 //sends a timing query packet

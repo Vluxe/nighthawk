@@ -6,5 +6,5 @@ import (
 
 // Get this party started.
 func main() {
-	nighthawk.Start("nighthawk") // set the display name of your server.
+	nighthawk.Start("Dalton's nighthawk") // set the display name of your server.
 }
