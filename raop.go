@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -30,7 +31,7 @@ func (s *airServer) startRAOPServer() {
 			if headers[key] != nil {
 				resHeaders[key] = headers[key][0]
 			}
-			resData, status := s.processRequest(verb, resource, headers, resHeaders, data)
+			resData, status := s.processRequest(c, verb, resource, headers, resHeaders, data)
 			c.buf.Write(s.createResponse(status, resHeaders, resData))
 			c.buf.Flush()
 			c.resetConn()
@@ -66,7 +67,7 @@ func (server *airServer) createResponse(success bool, headers map[string]string,
 }
 
 //processes the request by dispatching to the proper method for each response
-func (s *airServer) processRequest(verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
+func (s *airServer) processRequest(c *conn, verb, resource string, headers map[string][]string, resHeaders map[string]string, data []byte) ([]byte, bool) {
 	log.Println("resource is:", resource)
 	log.Println("verb is:", verb)
 	if verb == "POST" && resource == "/fp-setup" {
@@ -76,7 +77,7 @@ func (s *airServer) processRequest(verb, resource string, headers map[string][]s
 	} else if verb == "OPTIONS" {
 		return s.handleOptions(resource, headers, resHeaders)
 	} else if verb == "ANNOUNCE" {
-		status := s.handleAnnounce(resource, headers, data)
+		status := s.handleAnnounce(c, resource, headers, data)
 		return nil, status
 	} else if verb == "SETUP" {
 		return s.handleSetup(resource, headers, resHeaders)
@@ -147,8 +148,9 @@ func (s *airServer) handleOptions(resource string, headers map[string][]string, 
 }
 
 //process announce requests
-func (s *airServer) handleAnnounce(resource string, headers map[string][]string, data []byte) bool {
-	c := Client{RTSPUrl: resource, Name: getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: getHeaderValue(headers, "X-Apple-Device-ID")}
+func (s *airServer) handleAnnounce(con *conn, resource string, headers map[string][]string, data []byte) bool {
+	host, _, _ := net.SplitHostPort(con.rwc.RemoteAddr().String())
+	c := Client{RTSPUrl: resource, deviceIP: host, Name: getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: getHeaderValue(headers, "X-Apple-Device-ID")}
 	//grab the cypto keys from the body
 	bodyStr := string(data)
 	flags := strings.Split(bodyStr, "\r\n")
@@ -199,8 +201,6 @@ func (s *airServer) handleSetup(resource string, headers map[string][]string, re
 					log.Println("setting up client")
 
 					serverPort, controlPort, timePort := c.setup(port, func(b []byte, size int) {
-						//pass to interface
-					}, func(b []byte, size int) {
 						//pass to interface
 					})
 					resHeaders["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;mode=record;server_port=%d;control_port=%d;timing_port=%d", serverPort, controlPort, timePort)

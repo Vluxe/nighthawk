@@ -3,7 +3,9 @@ package nighthawk
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log"
+	"net"
 )
 
 const (
@@ -17,6 +19,8 @@ type timeServer struct {
 	clockOffset uint64
 	startTime   uint64
 	latency     uint32
+	clientPort  int
+	clientIP    string
 }
 
 type timingPacket struct {
@@ -30,22 +34,35 @@ type timingPacket struct {
 }
 
 //creates a udp listener struct
-func createTimeServer(clientPort int) timeServer {
-	t := timeServer{}
+func createTimeServer(clientPort int, clientIP string) timeServer {
+	t := timeServer{clientPort: clientPort, clientIP: clientIP}
 	t.listener = createUDPListener()
-	go t.listener.start(func(b []byte, size int) {
+	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
 		//process NTP packets
+		log.Println("NTP packet!")
+		t.listener.netLn.WriteTo(t.sendQuery(), *addr)
 	})
 	return t
 }
 
 //starts the time server by sending the first timing packet
 func (t *timeServer) start() {
-	t.sendQuery()
+	serverAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	if err != nil {
+		log.Println("unable to start time server:", err)
+		return
+	}
+	conn, err := net.DialUDP("udp", nil, serverAddr)
+	if err != nil {
+		log.Println("unable to start time server:", err)
+		return
+	}
+	conn.Write(t.sendQuery())
 }
 
 //sends a timing query packet
-func (t *timeServer) sendQuery() {
+func (t *timeServer) sendQuery() []byte {
+	log.Println("Shooting time packets..")
 	packet := timingPacket{ident: AIRTUNES_PACKET, command: AIRTUNES_TIMING_QUERY, fixed: swapToBigEndian16(0x0007), zero: 0, timestamp_1: 0,
 		timestamp_2: 0, timestamp_3: swapToBigEndian64(getTimeStamp() + t.clockOffset)}
 	buf := new(bytes.Buffer)
@@ -53,7 +70,7 @@ func (t *timeServer) sendQuery() {
 	if err != nil {
 		log.Println("binary.Write failed:", err)
 	}
-	t.listener.netLn.Write(buf.Bytes())
+	return buf.Bytes()
 }
 
 //grabs the timestamp from the system clock

@@ -6,6 +6,8 @@ import (
 	"net"
 )
 
+type updHandler func(b []byte, size int, addr *net.Addr)
+
 type udpListener struct {
 	port  int
 	netLn *net.UDPConn
@@ -21,8 +23,8 @@ func createUDPListener() udpListener {
 }
 
 //starts the listener and sets up the processing closure
-func (c *udpListener) start(handler func(b []byte, size int)) error {
-	sAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%d", c.port))
+func (c *udpListener) start(handler updHandler) error {
+	sAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf(":%d", c.port))
 	if err != nil {
 		log.Println("error binding UDP listener:", err)
 		return err
@@ -36,11 +38,11 @@ func (c *udpListener) start(handler func(b []byte, size int)) error {
 	defer ln.Close()
 	for {
 		buf := make([]byte, 1024)
-		n, err := ln.Read(buf)
+		n, addr, err := ln.ReadFrom(buf)
 		if err != nil {
 			log.Println("error reading from UDP listener:", err)
 		}
-		handler(buf, n)
+		handler(buf, n, &addr)
 	}
 	return nil
 }
