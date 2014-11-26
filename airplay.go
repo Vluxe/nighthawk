@@ -5,6 +5,13 @@ import (
 	"log"
 )
 
+type MirrorFeatures struct {
+	Height      int     //height of your screen
+	Width       int     //width of your screen
+	Overscanned bool    //is the display overscanned?
+	RefreshRate float32 //refresh rate 60 Hz (1/60) 0.016666666666666666
+}
+
 const (
 	airplayPort      = 7000
 	mirroringPort    = 7100
@@ -25,6 +32,7 @@ func (s *airServer) startMirroringWebServer(port int) {
 		isStream := false
 		for {
 			if isStream {
+				log.Println("got mirror video packet!")
 				//do stuff with video stream
 				//add interface stuff here too
 			} else {
@@ -36,12 +44,13 @@ func (s *airServer) startMirroringWebServer(port int) {
 					log.Println("error process mirror server request:", err)
 					return
 				}
-				//resHeaders := make(map[string]string)
+				resHeaders := make(map[string]string)
 				if resource == "/stream.xml" {
-					//respond with XML of supported features
-					//How do we want to get these features?
-					//c.buf.Write(s.createMirrorResponse(status, resHeaders, resData))
+					f := s.delegate.SupportedMirrorFeatures()
+					d := s.createFeaturesResponse(f)
+					c.buf.Write(s.createMirrorResponse(true, resHeaders, d))
 				} else {
+					log.Println("Got the second mirror stream!")
 					//associate with client object
 					//grab important stuff out of binary plist of HTTP payload
 					//start UDP time server. Client is on port 7010.
@@ -78,4 +87,30 @@ func (server *airServer) createMirrorResponse(success bool, headers map[string]s
 		body = append(body, data...)
 	}
 	return body
+}
+
+//create a XML response of the MirrorFeatures
+func (server *airServer) createFeaturesResponse(f MirrorFeatures) []byte {
+	scanned := "<true/>"
+	if !f.Overscanned {
+		scanned = "<false/>"
+	}
+	str := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+ <dict>
+  <key>height</key>
+  <integer>%d</integer>
+  <key>overscanned</key>
+  %s
+  <key>refreshRate</key>
+  <real>%f</real>
+  <key>version</key>
+  <string>150.33</string>
+  <key>width</key>
+  <integer>%d</integer>
+ </dict>
+</plist>`, f.Height, scanned, f.RefreshRate, f.Width)
+	return []byte(str)
 }

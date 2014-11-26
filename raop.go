@@ -57,7 +57,7 @@ func (server *airServer) createRTSPResponse(success bool, headers map[string]str
 	} else {
 		s += " 400 Bad Request" + carReturn
 	}
-	log.Println("response is (minus data):", s)
+	//log.Println("response is (minus data):", s)
 	body := []byte(s + carReturn)
 	if data != nil {
 		body = append(body, data...)
@@ -93,17 +93,6 @@ func (s *airServer) processRTSPRequest(c *conn, verb, resource string, headers m
 	}
 	log.Println("RTSP: not sure how to handle this...")
 	return nil, false
-}
-
-//temp method for debug purposes
-func (s *airServer) printRequest(verb, resource string, headers map[string][]string, data []byte) {
-	//log.Println("resource is:", resource)
-	//log.Println("verb is:", verb)
-	log.Println("headers:")
-	for key, val := range headers {
-		log.Printf("key: %s val: %s", key, val)
-	}
-	log.Println("body: ", string(data))
 }
 
 //process fair play requests

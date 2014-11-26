@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/Vluxe/nighthawk"
-	"log"
+	//"log"
 )
 
 type airplayHandler struct {
@@ -15,5 +15,9 @@ func main() {
 }
 
 func (h *airplayHandler) ReceivedAudioPacket(c *nighthawk.Client, data []byte, length int) {
-	log.Println("got an audio packet")
+	//log.Println("got an audio packet")
+}
+
+func (h *airplayHandler) SupportedMirrorFeatures() nighthawk.MirrorFeatures {
+	return nighthawk.MirrorFeatures{Height: 1280, Width: 720, Overscanned: true, RefreshRate: 0.016666666666666666}
 }
