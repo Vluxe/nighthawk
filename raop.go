@@ -198,7 +198,7 @@ func (s *airServer) handleSetup(resource string, headers map[string][]string, re
 					}
 
 					serverPort, controlPort, timePort := c.setup(port, func(b []byte, size int) {
-						//pass to interface
+						s.delegate.ReceivedAudioPacket(c, b, size)
 					})
 					resHeaders["Transport"] = fmt.Sprintf("RTP/AVP/UDP;unicast;mode=record;server_port=%d;control_port=%d;timing_port=%d", serverPort, controlPort, timePort)
 					resHeaders["Session"] = "1"

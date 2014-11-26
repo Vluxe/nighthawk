@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 )
 
 const (
 	AIRTUNES_PACKET       = 0x80
 	AIRTUNES_TIMING_QUERY = 0xd2
+	TIMESTAMP_EPOCH       = 0x83aa7e80 << 32 //not sure if this is right... //2208988800
 )
 
 type timeServer struct {
@@ -52,6 +54,8 @@ func (t *timeServer) start() {
 		log.Println("unable to start time server:", err)
 		return
 	}
+	t.startTime = t.getCurrentNano()
+	t.clockOffset = TIMESTAMP_EPOCH
 	t.listener.netLn.WriteTo(t.sendQuery(), cAddr)
 }
 
@@ -59,7 +63,7 @@ func (t *timeServer) start() {
 func (t *timeServer) sendQuery() []byte {
 	log.Println("Shooting time packets..")
 	packet := timingPacket{ident: AIRTUNES_PACKET, command: AIRTUNES_TIMING_QUERY, fixed: swapToBigEndian16(0x0007), zero: 0, timestamp_1: 0,
-		timestamp_2: 0, timestamp_3: swapToBigEndian64(getTimeStamp() + t.clockOffset)}
+		timestamp_2: 0, timestamp_3: swapToBigEndian64(t.getTimeStamp() + t.clockOffset)}
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.LittleEndian, packet)
 	if err != nil {
@@ -68,10 +72,14 @@ func (t *timeServer) sendQuery() []byte {
 	return buf.Bytes()
 }
 
+func (t *timeServer) getCurrentNano() uint64 {
+	return uint64(time.Now().Nanosecond())
+}
+
 //grabs the timestamp from the system clock
-func getTimeStamp() uint64 {
-	//implement me!!
-	return 0
+func (t *timeServer) getTimeStamp() uint64 {
+	stamp := t.getCurrentNano() - t.startTime
+	return stamp
 }
 
 //int swap: htonl

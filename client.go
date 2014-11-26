@@ -25,7 +25,6 @@ func (c *Client) setup(timePort int, serverHandler func(b []byte, size int)) (in
 	c.serverLn = createUDPListener()
 	go c.serverLn.start(func(b []byte, size int, addr *net.Addr) {
 		//decrypt audio packets
-		log.Println("audio packet!")
 		serverHandler(b, size)
 	})
 	c.controlLn = createUDPListener()

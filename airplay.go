@@ -29,16 +29,20 @@ func (s *airServer) startMirroringWebServer(port int) {
 				//add interface stuff here too
 			} else {
 				verb, resource, headers, data, err := readRequest(c.buf.Reader)
+				log.Println("verb:", verb)
+				log.Println("headers:", headers)
+				log.Println("data:", data)
 				if err != nil {
+					log.Println("error process mirror server request:", err)
 					return
 				}
-				resHeaders := make(map[string]string)
+				//resHeaders := make(map[string]string)
 				if resource == "/stream.xml" {
-					//associate with client object
 					//respond with XML of supported features
 					//How do we want to get these features?
 					//c.buf.Write(s.createMirrorResponse(status, resHeaders, resData))
 				} else {
+					//associate with client object
 					//grab important stuff out of binary plist of HTTP payload
 					//start UDP time server. Client is on port 7010.
 					isStream = true //set if the stream has change from HTTP to video
