@@ -235,6 +235,7 @@ func (s *airServer) handleFlush(con *conn, resource string, headers map[string][
 	if c != nil {
 		c.stop()
 		// notify the interface
+		delete(s.clients, host)
 	}
 	return nil, true
 }

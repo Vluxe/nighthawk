@@ -29,6 +29,7 @@ type timeServer struct {
 	latency     uint32
 	clientPort  int
 	clientIP    string
+	running     bool
 }
 
 type timingPacket struct {
@@ -48,7 +49,7 @@ func createTimeServer(clientPort int, clientIP string) timeServer {
 	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
 		//process NTP packets
 		log.Println("NTP packet!")
-		//t.listener.netLn.WriteTo(t.sendQuery(), *addr)
+		//t.listener.netLn.WriteTo(t.buildQuery(), *addr)
 	})
 	return t
 }
@@ -60,7 +61,6 @@ func createMirrorTimeServer(clientIP string) timeServer {
 	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
 		//process NTP packets
 		log.Println("NTP Mirror packet!")
-		//t.listener.netLn.WriteTo(t.sendQuery(), *addr)
 	})
 	return t
 }
@@ -73,19 +73,32 @@ func sharedMirrorListener() udpListener {
 	return mirrorUDPListener
 }
 
-//starts the time server by sending the first timing packet
+//starts the time server by sending the timing packet on a 3 second interval
 func (t *timeServer) start() {
-	//cAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	t.running = true
+	t.startTime = t.getCurrentNano()
+	t.clockOffset = TIMESTAMP_EPOCH
+	for t.running {
+		t.sendQuery()
+		time.Sleep(3 * time.Second)
+	}
+}
+
+//stops the time server from running
+func (t *timeServer) stop() {
+	t.running = false
+}
+
+//sends a query the the client
+func (t *timeServer) sendQuery() {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
 	cAddr, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		log.Println("unable to start time server:", err)
 		return
 	}
-	t.startTime = t.getCurrentNano()
-	t.clockOffset = TIMESTAMP_EPOCH
-	//count, err := t.listener.netLn.WriteToUDP(t.sendQuery(), cAddr)
-	count, err := cAddr.Write(t.sendQuery())
+	count, err := cAddr.Write(t.buildQuery())
+	//count, err := t.listener.netLn.WriteToUDP(t.buildQuery(), addr)
 
 	if err != nil {
 		log.Println("unable to write to UDP time: ", err)
@@ -94,8 +107,7 @@ func (t *timeServer) start() {
 }
 
 //sends a timing query packet
-func (t *timeServer) sendQuery() []byte {
-	log.Println("Shooting time packets..")
+func (t *timeServer) buildQuery() []byte {
 	packet := timingPacket{ident: AIRTUNES_PACKET, command: AIRTUNES_TIMING_QUERY, fixed: swapToBigEndian16(0x0007), zero: 0, timestamp_1: 0,
 		timestamp_2: 0, timestamp_3: swapToBigEndian64(t.getTimeStamp() + t.clockOffset)}
 	buf := new(bytes.Buffer)

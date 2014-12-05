@@ -39,17 +39,17 @@ func (c *Client) setup(timePort int, serverHandler func(b []byte, size int)) (in
 
 //start the audio stream by starting client's time server
 func (c *Client) start() {
-	c.timeSvr.start()
+	go c.timeSvr.start()
 }
 
 //start the audio stream
 func (c *Client) stop() {
-
+	c.timeSvr.stop()
 }
 
 //stop the udp listeners and cleanup things
 func (c *Client) teardown() {
-
+	c.mirrorTimeSvr.stop() //this client is out!
 }
 
 //start the mirroring stream by starting client's time server
