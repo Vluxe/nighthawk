@@ -49,6 +49,18 @@ type conn struct {
 	buf        *bufio.ReadWriter // buffered(lr,rwc), reading from bufio->limitReader->sr->rwc
 }
 
+func (c *conn) Read(p []byte) (n int, err error) {
+	// count := c.buf.Reader.Buffered()
+	// log.Println("tab is not better:", count)
+	//return c.rwc.Read(p)
+	//return c.buf.Reader.Read(p)
+	return c.sr.Read(p)
+}
+
+func (c *conn) Write(p []byte) (n int, err error) {
+	return c.buf.Write(p)
+}
+
 // noLimit is an effective infinite upper bound for io.LimitedReader
 const noLimit int64 = (1 << 63) - 1
 

@@ -1,7 +1,10 @@
 package nighthawk
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	//"io"
 	"log"
 )
 
@@ -10,6 +13,14 @@ type MirrorFeatures struct {
 	Width       int     //width of your screen
 	Overscanned bool    //is the display overscanned?
 	RefreshRate float32 //refresh rate 60 Hz (1/60) 0.016666666666666666
+}
+
+type streamPacketHeader struct {
+	PayloadSize  int32
+	PayloadType  int16
+	PayloadG     int16 // not sure what this does.
+	NTPTimestamp int64
+	Ignore       [112]byte //ignore the rest of header.
 }
 
 const (
@@ -32,25 +43,28 @@ func (s *airServer) startMirroringWebServer(port int) {
 		isStream := false
 		for {
 			if isStream {
-				//log.Println("got mirror video packet!")
-				//do stuff with and parse video stream
+				s.handleVideoStream(c)
 				//add interface stuff here too
 			} else {
 				verb, resource, headers, data, err := readRequest(c.buf.Reader)
+				log.Println("resource:", resource)
 				log.Println("verb:", verb)
 				log.Println("headers:", headers)
-				log.Println("data:", data)
 				if err != nil {
 					log.Println("error process mirror server request:", err)
 					return
 				}
 				resHeaders := make(map[string]string)
+				resHeaders["User-Agent"] = "AirPlay/215.10"
 				if resource == "/stream.xml" {
 					f := s.delegate.SupportedMirrorFeatures()
 					d := s.createFeaturesResponse(f)
-					c.buf.Write(s.createMirrorResponse(true, resHeaders, d))
+					c.buf.Write(s.createMirrorResponse(true, true, resHeaders, d))
+				} else if resource == "/fp-setup" {
+					resData := s.handleFairPlay(resHeaders, data)
+					c.buf.Write(s.createMirrorResponse(true, false, resHeaders, resData))
 				} else {
-					log.Println("Got the second mirror stream!")
+					//log.Println("Got the second mirror stream!")
 					host := s.getClientIP(c)
 					client := s.clients[host]
 					if client != nil {
@@ -70,12 +84,16 @@ func (s *airServer) startMirroringWebServer(port int) {
 }
 
 //creates a response to send back to the client
-func (server *airServer) createMirrorResponse(success bool, headers map[string]string, data []byte) []byte {
+func (server *airServer) createMirrorResponse(success bool, isPlist bool, headers map[string]string, data []byte) []byte {
 	s := HTTPProtocolType
 	if success {
 		s += " 200 OK" + carReturn
 		if data != nil {
-			s += fmt.Sprintf("Content-Type: text/x-apple-plist+xml%s", carReturn)
+			if isPlist {
+				s += fmt.Sprintf("Content-Type: text/x-apple-plist+xml%s", carReturn)
+			} else {
+				s += fmt.Sprintf("Content-Type: application/octet-stream%s", carReturn)
+			}
 			s += fmt.Sprintf("Content-Length: %d%s", len(data), carReturn)
 		}
 		for key, val := range headers {
@@ -84,6 +102,7 @@ func (server *airServer) createMirrorResponse(success bool, headers map[string]s
 	} else {
 		s += " 400 Bad Request" + carReturn
 	}
+	log.Println("response is (minus data):", s)
 	body := []byte(s + carReturn)
 	if data != nil {
 		body = append(body, data...)
@@ -115,4 +134,26 @@ func (server *airServer) createFeaturesResponse(f MirrorFeatures) []byte {
  </dict>
 </plist>`, f.Height, scanned, f.RefreshRate, f.Width)
 	return []byte(str)
+}
+
+func (server *airServer) handleVideoStream(c *conn) {
+	buffer := make([]byte, 128)
+	for {
+		n, err := c.Read(buffer)
+		if err != nil { //&& err != io.EOF
+			log.Println(err)
+		}
+		if n <= 0 {
+			break
+		}
+		var header streamPacketHeader
+		buf := bytes.NewReader(buffer)
+		err = binary.Read(buf, binary.LittleEndian, &header)
+		if err != nil {
+			fmt.Println("binary.Read failed:", err)
+		}
+		log.Println("Stream Packet Header.")
+		log.Println(header.PayloadType)
+		log.Println(header.PayloadSize)
+	}
 }
