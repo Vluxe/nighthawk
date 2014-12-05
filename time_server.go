@@ -92,7 +92,7 @@ func (t *timeServer) stop() {
 //sends a query the the client
 func (t *timeServer) sendQuery() {
 	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
-	cAddr, err := net.DialUDP("udp", nil, addr)
+	cAddr, err := net.DialUDP("udp", t.listener.sAddr, addr)
 	if err != nil {
 		log.Println("unable to start time server:", err)
 		return

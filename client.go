@@ -49,7 +49,7 @@ func (c *Client) stop() {
 
 //stop the udp listeners and cleanup things
 func (c *Client) teardown() {
-	c.mirrorTimeSvr.stop() //this client is out!
+	c.mirrorTimeSvr.stop() //this client is done!
 }
 
 //start the mirroring stream by starting client's time server
