@@ -6,7 +6,7 @@ type airServerInterface interface {
 }
 
 type airServer struct {
-	clients  map[string]*Client //the connected clients. Key names are based on the RTSPUrls
+	clients  map[string]*Client //the connected clients. Key names are based on the client's IP
 	delegate airServerInterface
 }
 

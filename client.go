@@ -8,15 +8,16 @@ import (
 
 //The client struct is used to encapsulate a device (OS X or iOS).
 type Client struct {
-	Name      string      //the name that the client is reporting
-	RTSPUrl   string      //the RTSP stream URL
-	deviceIP  string      //The IP of the client
-	rasAesKey []byte      //crypto keys
-	aesivKey  []byte      //crypto keys
-	deviceID  string      //the Apple device ID a (hex value of the client)
-	serverLn  udpListener //the server udp listener
-	controlLn udpListener //the control udp listener
-	timeSvr   timeServer  //the udp time server
+	Name          string      //the name that the client is reporting
+	RTSPUrl       string      //the RTSP stream URL
+	deviceIP      string      //The IP of the client
+	rasAesKey     []byte      //crypto keys
+	aesivKey      []byte      //crypto keys
+	deviceID      string      //the Apple device ID a (hex value of the client)
+	serverLn      udpListener //the server udp listener
+	controlLn     udpListener //the control udp listener
+	timeSvr       timeServer  //the udp time server
+	mirrorTimeSvr timeServer  //the udp time server of the screen mirroring
 }
 
 //setup the UDP ports. port is the timing port for the timeServer
@@ -49,4 +50,10 @@ func (c *Client) stop() {
 //stop the udp listeners and cleanup things
 func (c *Client) teardown() {
 
+}
+
+//start the mirroring stream by starting client's time server
+func (c *Client) startMirror() {
+	c.mirrorTimeSvr = createMirrorTimeServer(c.deviceIP)
+	go c.mirrorTimeSvr.start()
 }

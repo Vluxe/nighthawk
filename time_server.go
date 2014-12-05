@@ -9,10 +9,16 @@ import (
 	"time"
 )
 
+var (
+	mirrorUDPListener udpListener
+)
+
 const (
 	AIRTUNES_PACKET       = 0x80
 	AIRTUNES_TIMING_QUERY = 0xd2
 	TIMESTAMP_EPOCH       = 0x83aa7e80 << 32 //not sure if this is right... //2208988800
+	mirroringClientPort   = 7010
+	mirroringServerPort   = 7011
 )
 
 type timeServer struct {
@@ -47,16 +53,44 @@ func createTimeServer(clientPort int, clientIP string) timeServer {
 	return t
 }
 
+//creates a mirror listener
+func createMirrorTimeServer(clientIP string) timeServer {
+	t := timeServer{clientPort: mirroringClientPort, clientIP: clientIP}
+	t.listener = sharedMirrorListener()
+	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
+		//process NTP packets
+		log.Println("NTP Mirror packet!")
+		//t.listener.netLn.WriteTo(t.sendQuery(), *addr)
+	})
+	return t
+}
+
+//creates a udp listener struct
+func sharedMirrorListener() udpListener {
+	if mirrorUDPListener.port == 0 {
+		mirrorUDPListener = udpListener{port: mirroringServerPort}
+	}
+	return mirrorUDPListener
+}
+
 //starts the time server by sending the first timing packet
 func (t *timeServer) start() {
-	cAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	//cAddr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
+	cAddr, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		log.Println("unable to start time server:", err)
 		return
 	}
 	t.startTime = t.getCurrentNano()
 	t.clockOffset = TIMESTAMP_EPOCH
-	t.listener.netLn.WriteTo(t.sendQuery(), cAddr)
+	//count, err := t.listener.netLn.WriteToUDP(t.sendQuery(), cAddr)
+	count, err := cAddr.Write(t.sendQuery())
+
+	if err != nil {
+		log.Println("unable to write to UDP time: ", err)
+	}
+	log.Println("wrote time packet count:", count)
 }
 
 //sends a timing query packet

@@ -32,8 +32,8 @@ func (s *airServer) startMirroringWebServer(port int) {
 		isStream := false
 		for {
 			if isStream {
-				log.Println("got mirror video packet!")
-				//do stuff with video stream
+				//log.Println("got mirror video packet!")
+				//do stuff with and parse video stream
 				//add interface stuff here too
 			} else {
 				verb, resource, headers, data, err := readRequest(c.buf.Reader)
@@ -51,9 +51,12 @@ func (s *airServer) startMirroringWebServer(port int) {
 					c.buf.Write(s.createMirrorResponse(true, resHeaders, d))
 				} else {
 					log.Println("Got the second mirror stream!")
-					//associate with client object
-					//grab important stuff out of binary plist of HTTP payload
-					//start UDP time server. Client is on port 7010.
+					host := s.getClientIP(c)
+					client := s.clients[host]
+					if client != nil {
+						//grab important stuff out of binary plist of HTTP payload
+						client.startMirror()
+					}
 					isStream = true //set if the stream has change from HTTP to video
 				}
 			}
@@ -81,7 +84,6 @@ func (server *airServer) createMirrorResponse(success bool, headers map[string]s
 	} else {
 		s += " 400 Bad Request" + carReturn
 	}
-	log.Println("response is (minus data):", s)
 	body := []byte(s + carReturn)
 	if data != nil {
 		body = append(body, data...)

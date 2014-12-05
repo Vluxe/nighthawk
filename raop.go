@@ -79,20 +79,25 @@ func (s *airServer) processRTSPRequest(c *conn, verb, resource string, headers m
 		status := s.handleAnnounce(c, resource, headers, data)
 		return nil, status
 	} else if verb == "SETUP" {
-		return s.handleSetup(resource, headers, resHeaders)
+		return s.handleSetup(c, resource, headers, resHeaders)
 	} else if verb == "RECORD" {
-		return s.handleRecord(resource, headers, resHeaders)
+		return s.handleRecord(c, resource, headers, resHeaders)
 	} else if verb == "SET_PARAMETER" {
-		return s.handleSetParameters(resource, headers, resHeaders)
+		return s.handleSetParameters(c, resource, headers, resHeaders)
 	} else if verb == "FLUSH" {
-		return s.handleFlush(resource, headers, resHeaders)
+		return s.handleFlush(c, resource, headers, resHeaders)
 	} else if verb == "TEARDOWN" {
-		return s.handleTeardown(resource, headers, resHeaders)
+		return s.handleTeardown(c, resource, headers, resHeaders)
 	} else if verb == "GET_PARAMETER" {
 		return nil, true //this verb doesn't do anything or even get called, but just to be safe
 	}
 	log.Println("RTSP: not sure how to handle this...")
 	return nil, false
+}
+
+func (s *airServer) getClientIP(con *conn) string {
+	host, _, _ := net.SplitHostPort(con.rwc.RemoteAddr().String())
+	return host
 }
 
 //process fair play requests
@@ -138,7 +143,7 @@ func (s *airServer) handleOptions(resource string, headers map[string][]string, 
 
 //process announce requests
 func (s *airServer) handleAnnounce(con *conn, resource string, headers map[string][]string, data []byte) bool {
-	host, _, _ := net.SplitHostPort(con.rwc.RemoteAddr().String())
+	host := s.getClientIP(con)
 	c := Client{RTSPUrl: resource, deviceIP: host, Name: getHeaderValue(headers, "X-Apple-Client-Name"), deviceID: getHeaderValue(headers, "X-Apple-Device-ID")}
 	//grab the cypto keys from the body
 	bodyStr := string(data)
@@ -165,13 +170,14 @@ func (s *airServer) handleAnnounce(con *conn, resource string, headers map[strin
 			c.rasAesKey = data
 		}
 	}
-	s.clients[c.RTSPUrl] = &c
+	s.clients[c.deviceIP] = &c
 	return true
 }
 
 //process the setup requests
-func (s *airServer) handleSetup(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.clients[resource]
+func (s *airServer) handleSetup(con *conn, resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	host := s.getClientIP(con)
+	c := s.clients[host]
 	if c != nil {
 		transport := getHeaderValue(headers, "Transport")
 		settings := strings.Split(transport, ";")
@@ -202,8 +208,9 @@ func (s *airServer) handleSetup(resource string, headers map[string][]string, re
 }
 
 //process the RECORD requests
-func (s *airServer) handleRecord(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.clients[resource]
+func (s *airServer) handleRecord(con *conn, resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	host := s.getClientIP(con)
+	c := s.clients[host]
 	if c != nil {
 		c.start()
 		// notify the interface
@@ -212,8 +219,9 @@ func (s *airServer) handleRecord(resource string, headers map[string][]string, r
 }
 
 //process the set_parameters requests
-func (s *airServer) handleSetParameters(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.clients[resource]
+func (s *airServer) handleSetParameters(con *conn, resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	host := s.getClientIP(con)
+	c := s.clients[host]
 	if c != nil {
 		//notify the interface of stuff
 	}
@@ -221,8 +229,9 @@ func (s *airServer) handleSetParameters(resource string, headers map[string][]st
 }
 
 //process the FLUSH requests
-func (s *airServer) handleFlush(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.clients[resource]
+func (s *airServer) handleFlush(con *conn, resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	host := s.getClientIP(con)
+	c := s.clients[host]
 	if c != nil {
 		c.stop()
 		// notify the interface
@@ -231,8 +240,9 @@ func (s *airServer) handleFlush(resource string, headers map[string][]string, re
 }
 
 //process the TEARDOWN requests
-func (s *airServer) handleTeardown(resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
-	c := s.clients[resource]
+func (s *airServer) handleTeardown(con *conn, resource string, headers map[string][]string, resHeaders map[string]string) ([]byte, bool) {
+	host := s.getClientIP(con)
+	c := s.clients[host]
 	if c != nil {
 		delete(s.clients, resource)
 		c.teardown()
