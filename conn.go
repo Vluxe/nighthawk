@@ -2,6 +2,7 @@ package nighthawk
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -66,7 +67,7 @@ const noLimit int64 = (1 << 63) - 1
 
 //starts the listener and sets up the processing closure
 func StartServer(port int, handler func(c *conn)) error {
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	ln, err := net.Listen("tcp4", fmt.Sprintf(":%d", port)) //change back to tcp at some point
 	if err != nil {
 		log.Println("error starting server:", err)
 		return err
@@ -207,9 +208,20 @@ func readRequest(b *bufio.Reader) (v string, r string, h map[string][]string, bu
 		return "", "", nil, nil, err
 	}
 	count := b.Buffered()
-	buffer, _ := b.Peek(count)
-
-	return verb, resource, headers, buffer, nil
+	var buffer bytes.Buffer
+	for {
+		buf := make([]byte, count)
+		n, err := b.Read(buf)
+		if err != nil && err != io.EOF {
+			return "", "", nil, nil, err
+		}
+		buffer.Write(buf)
+		if n == 0 || n == count {
+			break
+		}
+		count -= n
+	}
+	return verb, resource, headers, buffer.Bytes(), nil
 }
 
 //parses and returns the verb and resource of the request

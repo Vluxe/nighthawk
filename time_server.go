@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	mirrorUDPListener udpListener
+	mirrorUDPListener *udpListener
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 )
 
 type timeServer struct {
-	listener    udpListener
+	listener    *udpListener
 	queryCount  int
 	clockOffset uint64
 	startTime   uint64
@@ -32,6 +32,28 @@ type timeServer struct {
 	running     bool
 }
 
+//represents the NTP time
+type ntpTime struct {
+	Seconds  uint32
+	Fraction uint32
+}
+
+//this an NTP client query msg packet
+type msg struct {
+	LiVnMode       byte // Leap Indicator (2) + Version (3) + Mode (3)
+	Stratum        byte
+	Poll           byte
+	Precision      byte
+	RootDelay      uint32
+	RootDispersion uint32
+	ReferenceId    uint32
+	ReferenceTime  ntpTime
+	OriginTime     ntpTime
+	ReceiveTime    ntpTime
+	TransmitTime   ntpTime
+}
+
+//timimg packet is an RTP packet used in the audio stream
 type timingPacket struct {
 	ident       uint8
 	command     uint8
@@ -43,32 +65,35 @@ type timingPacket struct {
 }
 
 //creates a udp listener struct
-func createTimeServer(clientPort int, clientIP string) timeServer {
+func createTimeServer(clientPort int, clientIP string) *timeServer {
 	t := timeServer{clientPort: clientPort, clientIP: clientIP}
 	t.listener = createUDPListener()
 	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
 		//process NTP packets
 		log.Println("NTP packet!")
+		//I assume we will calculate latency some how here
 		//t.listener.netLn.WriteTo(t.buildQuery(), *addr)
 	})
-	return t
+	return &t
 }
 
 //creates a mirror listener
-func createMirrorTimeServer(clientIP string) timeServer {
+func createMirrorTimeServer(clientIP string) *timeServer {
 	t := timeServer{clientPort: mirroringClientPort, clientIP: clientIP}
 	t.listener = sharedMirrorListener()
-	go t.listener.start(func(b []byte, size int, addr *net.Addr) {
-		//process NTP packets
-		log.Println("NTP Mirror packet!")
-	})
-	return t
+	return &t
 }
 
 //creates a udp listener struct
-func sharedMirrorListener() udpListener {
-	if mirrorUDPListener.port == 0 {
-		mirrorUDPListener = udpListener{port: mirroringServerPort}
+func sharedMirrorListener() *udpListener {
+	if mirrorUDPListener == nil {
+		mirrorUDPListener = &udpListener{port: mirroringServerPort}
+		go mirrorUDPListener.start(func(b []byte, size int, addr *net.Addr) {
+			//process NTP packets
+			//not sure how we use this to "synchronize" the clocks right now
+			//I assume we will calculate latency some how here
+			log.Println("NTP Mirror packet!")
+		})
 	}
 	return mirrorUDPListener
 }
@@ -91,14 +116,13 @@ func (t *timeServer) stop() {
 
 //sends a query the the client
 func (t *timeServer) sendQuery() {
-	addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort))
-	cAddr, err := net.DialUDP("udp", t.listener.sAddr, addr)
+	host := fmt.Sprintf("[%s]:%d", t.clientIP, t.clientPort)
+	addr, err := net.ResolveUDPAddr("udp", host)
 	if err != nil {
-		log.Println("unable to start time server:", err)
+		log.Println("unable to dial time server:", err)
 		return
 	}
-	count, err := cAddr.Write(t.buildQuery())
-	//count, err := t.listener.netLn.WriteToUDP(t.buildQuery(), addr)
+	count, err := t.listener.netLn.WriteToUDP(t.buildQuery(), addr)
 
 	if err != nil {
 		log.Println("unable to write to UDP time: ", err)
@@ -108,6 +132,17 @@ func (t *timeServer) sendQuery() {
 
 //sends a timing query packet
 func (t *timeServer) buildQuery() []byte {
+	if t.listener == sharedMirrorListener() {
+		m := new(msg)
+		m.SetMode(3)
+		m.SetVersion(4)
+		buf := new(bytes.Buffer)
+		err := binary.Write(buf, binary.BigEndian, m)
+		if err != nil {
+			log.Println("binary.Write for ntp failed:", err)
+		}
+		return buf.Bytes()
+	}
 	packet := timingPacket{ident: AIRTUNES_PACKET, command: AIRTUNES_TIMING_QUERY, fixed: swapToBigEndian16(0x0007), zero: 0, timestamp_1: 0,
 		timestamp_2: 0, timestamp_3: swapToBigEndian64(t.getTimeStamp() + t.clockOffset)}
 	buf := new(bytes.Buffer)
@@ -118,6 +153,22 @@ func (t *timeServer) buildQuery() []byte {
 	return buf.Bytes()
 }
 
+func (t ntpTime) UTC() time.Time {
+	nsec := uint64(t.Seconds)*1e9 + (uint64(t.Fraction) * 1e9 >> 32)
+	return time.Date(1900, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(nsec))
+}
+
+// SetVersion sets the NTP protocol version on the message.
+func (m *msg) SetVersion(v byte) {
+	m.LiVnMode = (m.LiVnMode & 0xc7) | v<<3
+}
+
+// SetMode sets the NTP protocol mode on the message.
+func (m *msg) SetMode(md byte) {
+	m.LiVnMode = (m.LiVnMode & 0xf8) | md
+}
+
+//pulls the nanoseconds
 func (t *timeServer) getCurrentNano() uint64 {
 	return uint64(time.Now().Nanosecond())
 }

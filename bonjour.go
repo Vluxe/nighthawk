@@ -43,6 +43,7 @@ func registerServices(servername string) {
 	features := fmt.Sprintf("0x%x", mask)
 	airplayOp.SetTXTPair("features", features)
 	airplayOp.SetTXTPair("model", "AppleTV2,1")
+	airplayOp.SetTXTPair("srcvers", "130.14")
 	err = airplayOp.Start()
 	if err != nil {
 		log.Printf("Failed to register airplay service: %s", err)

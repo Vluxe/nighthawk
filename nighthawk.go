@@ -1,7 +1,8 @@
 package nighthawk
 
 type airServerInterface interface {
-	ReceivedAudioPacket(c *Client, data []byte, length int)
+	ReceivedAudioPacket(c *Client, data []byte)
+	ReceivedMirroringPacket(c *Client, data []byte)
 	SupportedMirrorFeatures() MirrorFeatures
 }
 
